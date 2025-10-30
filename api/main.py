@@ -9,6 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from api.auth import PasswordAuthMiddleware
 from api.routers import (
     auth,
+    batch_uploads,
     chat,
     config,
     context,
@@ -19,6 +20,7 @@ from api.routers import (
     models,
     notebooks,
     notes,
+    oauth,
     podcasts,
     search,
     settings,
@@ -119,6 +121,7 @@ app.include_router(embedding_rebuild.router, prefix="/api/embeddings", tags=["em
 app.include_router(settings.router, prefix="/api", tags=["settings"])
 app.include_router(context.router, prefix="/api", tags=["context"])
 app.include_router(sources.router, prefix="/api", tags=["sources"])
+app.include_router(batch_uploads.router, tags=["batch-uploads"])
 app.include_router(insights.router, prefix="/api", tags=["insights"])
 app.include_router(commands_router.router, prefix="/api", tags=["commands"])
 app.include_router(podcasts.router, prefix="/api", tags=["podcasts"])
@@ -127,6 +130,7 @@ app.include_router(speaker_profiles.router, prefix="/api", tags=["speaker-profil
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(source_chat.router, prefix="/api", tags=["source-chat"])
 app.include_router(oauth2.router, prefix="/api", tags=["oauth2"])
+app.include_router(oauth.router)
 app.include_router(google_drive.router, prefix="/api", tags=["google-drive"])
 
 

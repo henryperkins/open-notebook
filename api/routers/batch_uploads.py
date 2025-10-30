@@ -15,7 +15,12 @@ from api.services.batch_upload_service import (
     BatchUploadStatusResponse,
     ProcessingPriority
 )
-from api.auth import get_current_user  # Assuming authentication exists
+# from api.auth import get_current_user  # Will be implemented when auth system is ready
+
+# Temporary mock authentication for development
+async def get_current_user():
+    return {"id": "dev-user", "username": "dev"}
+
 from pydantic import BaseModel, Field
 
 
