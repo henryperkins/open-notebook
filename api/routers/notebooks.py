@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from loguru import logger
 
-from api.models import NotebookCreate, NotebookResponse, NotebookUpdate
+from api.models import NotebookCreate, NotebookResponse, NotebookUpdate, BulkSourceOperationRequest
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
 from open_notebook.exceptions import InvalidInputError
@@ -181,17 +181,19 @@ async def update_notebook(notebook_id: str, notebook_update: NotebookUpdate):
         )
 
 
-class BulkSourceOperationRequest(BaseModel):
-    source_ids: List[str]
-    operation: Literal["add", "remove"]
-
-
 @router.post("/notebooks/{notebook_id}/sources/bulk")
 async def bulk_source_operation(
     notebook_id: str, request: BulkSourceOperationRequest
 ):
     """Bulk add or remove sources from a notebook."""
     try:
+        # Validate batch size for security
+        if len(request.source_ids) == 0:
+            raise HTTPException(status_code=400, detail="At least one source ID must be provided")
+
+        if len(request.source_ids) > 50:
+            raise HTTPException(status_code=400, detail="Maximum 50 source IDs allowed per request")
+
         # Check if notebook exists
         notebook = await Notebook.get(notebook_id)
         if not notebook:
@@ -239,7 +241,7 @@ async def bulk_source_operation(
                 elif request.operation == "remove":
                     # Delete the reference record linking source to notebook
                     await repo_query(
-                        "DELETE FROM reference WHERE out = $notebook_id AND in = $source_id",
+                        "DELETE FROM reference WHERE out = $source_id AND in = $notebook_id",
                         {
                             "notebook_id": ensure_record_id(notebook_id),
                             "source_id": ensure_record_id(source_id),
@@ -335,7 +337,7 @@ async def remove_source_from_notebook(notebook_id: str, source_id: str):
 
         # Delete the reference record linking source to notebook
         await repo_query(
-            "DELETE FROM reference WHERE out = $notebook_id AND in = $source_id",
+            "DELETE FROM reference WHERE out = $source_id AND in = $notebook_id",
             {
                 "notebook_id": ensure_record_id(notebook_id),
                 "source_id": ensure_record_id(source_id),

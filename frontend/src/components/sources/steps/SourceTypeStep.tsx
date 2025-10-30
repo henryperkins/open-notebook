@@ -1,13 +1,14 @@
 "use client"
 
 import { Control, FieldErrors, UseFormRegister, useWatch } from "react-hook-form"
-import { FileIcon, LinkIcon, FileTextIcon } from "lucide-react"
+import { FileIcon, LinkIcon, FileTextIcon, Upload } from "lucide-react"
 import { FormSection } from "@/components/ui/form-section"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Controller } from "react-hook-form"
+import { Button } from "@/components/ui/button"
 
 interface CreateSourceFormData {
   type: 'link' | 'upload' | 'text'
@@ -46,9 +47,10 @@ interface SourceTypeStepProps {
   control: Control<CreateSourceFormData>
   register: UseFormRegister<CreateSourceFormData>
   errors: FieldErrors<CreateSourceFormData>
+  onBatchUpload?: () => void
 }
 
-export function SourceTypeStep({ control, register, errors }: SourceTypeStepProps) {
+export function SourceTypeStep({ control, register, errors, onBatchUpload }: SourceTypeStepProps) {
   // Watch the selected type to make title conditional
   const selectedType = useWatch({ control, name: 'type' })
   return (
@@ -105,11 +107,38 @@ export function SourceTypeStep({ control, register, errors }: SourceTypeStepProp
                         id="file"
                         type="file"
                         {...register('file')}
-                        accept=".pdf,.doc,.docx,.txt,.md,.epub"
+                        accept=".pdf,.doc,.docx,.txt,.md,.epub,.jpg,.jpeg,.png,.gif,.bmp,.webp,.mp3,.wav,.mp4,.avi,.mov,.csv,.xlsx,.json,.xml,.html"
                       />
                       <p className="text-xs text-muted-foreground mt-1">
-                        Supported formats: PDF, DOC, DOCX, TXT, MD, EPUB
+                        Supported formats: PDF, DOC, DOCX, TXT, MD, EPUB, Images, Audio, Video, and more
                       </p>
+
+                      {onBatchUpload && (
+                        <div className="mt-4">
+                          <div className="relative">
+                            <div className="absolute inset-0 flex items-center">
+                              <span className="w-full border-t" />
+                            </div>
+                            <div className="relative flex justify-center text-xs uppercase">
+                              <span className="bg-background px-2 text-muted-foreground">Or</span>
+                            </div>
+                          </div>
+
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full mt-4"
+                            onClick={onBatchUpload}
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Upload Multiple Files
+                          </Button>
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Upload multiple files at once with progress tracking and batch processing
+                          </p>
+                        </div>
+                      )}
+
                       {errors.file && (
                         <p className="text-sm text-destructive mt-1">{errors.file.message}</p>
                       )}

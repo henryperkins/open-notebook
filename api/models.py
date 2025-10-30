@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Literal, Optional
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -425,5 +426,56 @@ class ErrorResponse(BaseModel):
 
 
 class BulkSourceOperationRequest(BaseModel):
-    source_ids: List[str]
+    source_ids: List[str] = Field(..., max_length=50, description="List of source IDs (max 50 per request)")
     operation: Literal["add", "remove"]
+
+
+# Batch Upload Models
+class BatchUploadInitRequest(BaseModel):
+    """Request model for batch upload initiation."""
+    notebook_ids: Optional[List[str]] = Field(default=None, description="Notebook IDs to assign files to")
+    priority: Literal["low", "normal", "high", "urgent"] = Field(default="normal", description="Processing priority")
+    config_override: Optional[Dict[str, Any]] = Field(default=None, description="Configuration overrides")
+
+
+class FileProcessingInfo(BaseModel):
+    """Information about a single file in the batch."""
+    file_id: str
+    original_filename: str
+    file_size: int
+    mime_type: str
+    status: Literal["pending", "uploading", "uploaded", "validating", "validated", "processing", "completed", "failed", "retrying", "skipped"]
+    error_message: Optional[str] = None
+    retry_count: int = 0
+    upload_progress: float = 0.0
+    processing_progress: float = 0.0
+    notebook_ids: List[str] = []
+
+
+class BatchUploadResponse(BaseModel):
+    """Response for batch upload initiation."""
+    batch_id: str
+    status: Literal["initializing", "uploading", "validating", "processing", "completed", "failed", "cancelled", "paused"]
+    total_files: int
+    total_size: int
+    estimated_duration: Optional[float] = None
+    message: str
+
+
+class BatchUploadStatusResponse(BaseModel):
+    """Detailed status response for batch uploads."""
+    batch_id: str
+    status: Literal["initializing", "uploading", "validating", "processing", "completed", "failed", "cancelled", "paused"]
+    progress_percentage: float
+    total_files: int
+    processed_files: int
+    failed_files: int
+    skipped_files: int
+    total_size: int
+    uploaded_size: int
+    files: List[FileProcessingInfo]
+    estimated_time_remaining: Optional[float] = None
+    error_summary: Dict[str, int] = {}
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None

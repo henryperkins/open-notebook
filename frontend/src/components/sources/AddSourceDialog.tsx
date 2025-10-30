@@ -22,6 +22,7 @@ import { useTransformations } from '@/lib/hooks/use-transformations'
 import { useCreateSource } from '@/lib/hooks/use-sources'
 import { useSettings } from '@/lib/hooks/use-settings'
 import { CreateSourceRequest } from '@/lib/types/api'
+import { BatchUploadDialog } from './BatchUploadDialog'
 
 const createSourceSchema = z.object({
   type: z.enum(['link', 'upload', 'text']),
@@ -93,6 +94,7 @@ export function AddSourceDialog({
     defaultNotebookId ? [defaultNotebookId] : []
   )
   const [selectedTransformations, setSelectedTransformations] = useState<string[]>([])
+  const [batchUploadOpen, setBatchUploadOpen] = useState(false)
 
   // Cleanup timeouts to prevent memory leaks
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -351,6 +353,7 @@ export function AddSourceDialog({
                 register={register}
                 // @ts-expect-error - Type inference issue with zod schema
                 errors={errors}
+                onBatchUpload={() => setBatchUploadOpen(true)}
               />
             )}
             
@@ -421,6 +424,13 @@ export function AddSourceDialog({
           </div>
         </form>
       </DialogContent>
+
+      {/* Batch Upload Dialog */}
+      <BatchUploadDialog
+        open={batchUploadOpen}
+        onOpenChange={setBatchUploadOpen}
+        initialNotebookIds={selectedNotebooks}
+      />
     </Dialog>
   )
 }
