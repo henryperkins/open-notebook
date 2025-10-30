@@ -95,6 +95,7 @@ export function AddSourceDialog({
   )
   const [selectedTransformations, setSelectedTransformations] = useState<string[]>([])
   const [batchUploadOpen, setBatchUploadOpen] = useState(false)
+  const [googleDriveOpen, setGoogleDriveOpen] = useState(false)
 
   // Cleanup timeouts to prevent memory leaks
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -333,10 +334,22 @@ export function AddSourceDialog({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[700px] p-0">
         <DialogHeader className="px-6 pt-6 pb-0">
-          <DialogTitle>Add New Source</DialogTitle>
-          <DialogDescription>
-            Add content from links, uploads, or text to your notebooks.
-          </DialogDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle>Add New Source</DialogTitle>
+              <DialogDescription>
+                Add content from links, uploads, or text to your notebooks.
+              </DialogDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setBatchUploadOpen(true)}>
+                Batch Upload
+              </Button>
+              <Button variant="outline" onClick={() => setGoogleDriveOpen(true)}>
+                Import from Google Drive
+              </Button>
+            </div>
+          </div>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)}>
@@ -424,13 +437,23 @@ export function AddSourceDialog({
           </div>
         </form>
       </DialogContent>
-
-      {/* Batch Upload Dialog */}
       <BatchUploadDialog
         open={batchUploadOpen}
         onOpenChange={setBatchUploadOpen}
         initialNotebookIds={selectedNotebooks}
+        notebookId={defaultNotebookId}
+        onSuccess={() => {
+          // TODO: integrate with source refresh once available
+        }}
       />
+      <Dialog open={googleDriveOpen} onOpenChange={setGoogleDriveOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Import from Google Drive</DialogTitle>
+          </DialogHeader>
+          <p>Google Drive integration coming soon!</p>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }

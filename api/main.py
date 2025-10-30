@@ -1,8 +1,10 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
+from starlette.middleware.sessions import SessionMiddleware
 
 from api.auth import PasswordAuthMiddleware
 from api.routers import (
@@ -24,6 +26,8 @@ from api.routers import (
     sources,
     speaker_profiles,
     transformations,
+    oauth2,
+    google_drive,
 )
 from api.routers import commands as commands_router
 from open_notebook.database.async_migrate import AsyncMigrationManager
@@ -79,6 +83,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Add session middleware
+# Make sure to set the SESSION_SECRET_KEY environment variable
+session_secret_key = os.environ.get("SESSION_SECRET_KEY")
+if not session_secret_key:
+    raise RuntimeError(
+        "SESSION_SECRET_KEY environment variable must be set before starting the API"
+    )
+
+app.add_middleware(SessionMiddleware, secret_key=session_secret_key)
+
 # Add password authentication middleware first
 # Exclude /api/auth/status and /api/config from authentication
 app.add_middleware(PasswordAuthMiddleware, excluded_paths=["/", "/health", "/docs", "/openapi.json", "/redoc", "/api/auth/status", "/api/config"])
@@ -112,6 +126,8 @@ app.include_router(episode_profiles.router, prefix="/api", tags=["episode-profil
 app.include_router(speaker_profiles.router, prefix="/api", tags=["speaker-profiles"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(source_chat.router, prefix="/api", tags=["source-chat"])
+app.include_router(oauth2.router, prefix="/api", tags=["oauth2"])
+app.include_router(google_drive.router, prefix="/api", tags=["google-drive"])
 
 
 @app.get("/")

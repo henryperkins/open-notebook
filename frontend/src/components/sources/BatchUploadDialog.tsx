@@ -54,6 +54,8 @@ interface BatchUploadDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   initialNotebookIds?: string[]
+  notebookId?: string
+  onSuccess?: () => void
 }
 
 interface FileItem {
@@ -84,7 +86,13 @@ const PRIORITY_CONFIG = {
   urgent: { label: 'Urgent', color: 'bg-red-100 text-red-800', icon: Wifi },
 }
 
-export function BatchUploadDialog({ open, onOpenChange, initialNotebookIds = [] }: BatchUploadDialogProps) {
+export function BatchUploadDialog({
+  open,
+  onOpenChange,
+  initialNotebookIds = [],
+  notebookId,
+  onSuccess,
+}: BatchUploadDialogProps) {
   const [files, setFiles] = useState<FileItem[]>([])
   const [selectedNotebooks, setSelectedNotebooks] = useState<string[]>(initialNotebookIds)
   const [priority, setPriority] = useState<'low' | 'normal' | 'high' | 'urgent'>('normal')
@@ -97,6 +105,23 @@ export function BatchUploadDialog({ open, onOpenChange, initialNotebookIds = [] 
 
   const { notebooks } = useNotebooks()
   const batchUpload = useBatchUpload()
+
+  // Sync notebook selection when parent dialog opens or defaults change
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    const fallback: string[] = Array.isArray(initialNotebookIds)
+      ? initialNotebookIds
+      : []
+    const next = notebookId ? [notebookId] : fallback
+    setSelectedNotebooks((prev) => {
+      const prevKey = prev.join(',')
+      const nextKey = next.join(',')
+      return prevKey === nextKey ? prev : next
+    })
+  }, [open, notebookId, initialNotebookIds])
 
   // Calculate batch statistics
   const totalSize = files.reduce((sum, file) => sum + file.file.size, 0)
@@ -194,6 +219,7 @@ export function BatchUploadDialog({ open, onOpenChange, initialNotebookIds = [] 
         priority,
         autoStart,
       })
+      onSuccess?.()
     } catch (error) {
       console.error('Failed to start batch upload:', error)
     }

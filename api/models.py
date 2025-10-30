@@ -258,6 +258,7 @@ class SettingsResponse(BaseModel):
     default_embedding_option: Optional[str] = None
     auto_delete_files: Optional[str] = None
     youtube_preferred_languages: Optional[List[str]] = None
+    google_drive_api_key: Optional[str] = None
 
 
 class SettingsUpdate(BaseModel):
@@ -266,6 +267,7 @@ class SettingsUpdate(BaseModel):
     default_embedding_option: Optional[str] = None
     auto_delete_files: Optional[str] = None
     youtube_preferred_languages: Optional[List[str]] = None
+    google_drive_api_key: Optional[str] = None
 
 
 # Sources API models
@@ -426,25 +428,46 @@ class ErrorResponse(BaseModel):
 
 
 class BulkSourceOperationRequest(BaseModel):
-    source_ids: List[str] = Field(..., max_length=50, description="List of source IDs (max 50 per request)")
+    source_ids: List[str] = Field(
+        ..., max_length=50, description="List of source IDs (max 50 per request)"
+    )
     operation: Literal["add", "remove"]
 
 
-# Batch Upload Models
+# Batch Upload models
 class BatchUploadInitRequest(BaseModel):
     """Request model for batch upload initiation."""
-    notebook_ids: Optional[List[str]] = Field(default=None, description="Notebook IDs to assign files to")
-    priority: Literal["low", "normal", "high", "urgent"] = Field(default="normal", description="Processing priority")
-    config_override: Optional[Dict[str, Any]] = Field(default=None, description="Configuration overrides")
+
+    notebook_ids: Optional[List[str]] = Field(
+        default=None, description="Notebook IDs to assign files to"
+    )
+    priority: Literal["low", "normal", "high", "urgent"] = Field(
+        default="normal", description="Processing priority"
+    )
+    config_override: Optional[Dict[str, Any]] = Field(
+        default=None, description="Configuration overrides"
+    )
 
 
 class FileProcessingInfo(BaseModel):
     """Information about a single file in the batch."""
+
     file_id: str
     original_filename: str
     file_size: int
     mime_type: str
-    status: Literal["pending", "uploading", "uploaded", "validating", "validated", "processing", "completed", "failed", "retrying", "skipped"]
+    status: Literal[
+        "pending",
+        "uploading",
+        "uploaded",
+        "validating",
+        "validated",
+        "processing",
+        "completed",
+        "failed",
+        "retrying",
+        "skipped",
+    ]
     error_message: Optional[str] = None
     retry_count: int = 0
     upload_progress: float = 0.0
@@ -454,8 +477,18 @@ class FileProcessingInfo(BaseModel):
 
 class BatchUploadResponse(BaseModel):
     """Response for batch upload initiation."""
+
     batch_id: str
-    status: Literal["initializing", "uploading", "validating", "processing", "completed", "failed", "cancelled", "paused"]
+    status: Literal[
+        "initializing",
+        "uploading",
+        "validating",
+        "processing",
+        "completed",
+        "failed",
+        "cancelled",
+        "paused",
+    ]
     total_files: int
     total_size: int
     estimated_duration: Optional[float] = None
@@ -464,8 +497,18 @@ class BatchUploadResponse(BaseModel):
 
 class BatchUploadStatusResponse(BaseModel):
     """Detailed status response for batch uploads."""
+
     batch_id: str
-    status: Literal["initializing", "uploading", "validating", "processing", "completed", "failed", "cancelled", "paused"]
+    status: Literal[
+        "initializing",
+        "uploading",
+        "validating",
+        "processing",
+        "completed",
+        "failed",
+        "cancelled",
+        "paused",
+    ]
     progress_percentage: float
     total_files: int
     processed_files: int
@@ -479,3 +522,8 @@ class BatchUploadStatusResponse(BaseModel):
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+
+
+class BatchSourceResponse(SourceResponse):
+    batch_id: str
+    batch_status: str
