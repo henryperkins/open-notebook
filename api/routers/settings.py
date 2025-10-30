@@ -12,6 +12,7 @@ router = APIRouter()
 async def get_settings():
     """Get all application settings."""
     try:
+        settings: ContentSettings = await ContentSettings.get_instance()  # type: ignore[assignment]
         return SettingsResponse(
             default_content_processing_engine_doc=settings.default_content_processing_engine_doc,
             default_content_processing_engine_url=settings.default_content_processing_engine_url,

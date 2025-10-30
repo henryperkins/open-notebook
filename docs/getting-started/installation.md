@@ -131,6 +131,8 @@ Open Notebook uses environment variables for configuration. Create a `.env` file
 ```env
 # Security (Optional - for public deployments)
 OPEN_NOTEBOOK_PASSWORD=your_secure_password_here
+# Required by the API for session storage (generate a random string)
+SESSION_SECRET_KEY=your-64-char-random-string
 
 # Database Configuration
 SURREAL_URL="ws://localhost:8000/rpc"
@@ -158,6 +160,8 @@ ANTHROPIC_API_KEY=sk-ant-your-anthropic-key-here
 ```env
 # Provides: Large context models, embeddings, TTS
 GEMINI_API_KEY=your-gemini-key-here
+# Optional: Override OAuth redirect for Google Drive (defaults to API_URL or localhost)
+# GOOGLE_REDIRECT_URI=https://notebook.example.com/api/oauth2/google/callback
 ```
 
 #### Vertex AI (Google Cloud)
@@ -593,6 +597,14 @@ curl http://localhost:8502/healthz
 2. Navigate to "Podcast" tab
 3. Click "Generate Podcast"
 4. Wait for background processing to complete
+
+#### Test Google Drive Integration (OAuth Smoke Test)
+1. Ensure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `SESSION_SECRET_KEY` are set
+2. (Optional) Set `GOOGLE_REDIRECT_URI` to match the authorized redirect in the Google Cloud console
+3. In the web app, open **Settings → Integrations → Google Drive**
+4. Click **Connect** and complete the Google sign-in flow
+5. Confirm you are redirected back to `/settings` and see the success toast
+6. Run `GET /api/google-drive/files` (or use the UI once available) to verify file listing works
 
 ---
 

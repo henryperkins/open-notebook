@@ -1,5 +1,8 @@
 'use client'
 
+import { useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { toast } from 'sonner'
 import { AppShell } from '@/components/layout/AppShell'
 import { SettingsForm } from './components/SettingsForm'
 import { useSettings } from '@/lib/hooks/use-settings'
@@ -8,6 +11,21 @@ import { RefreshCw } from 'lucide-react'
 
 export default function SettingsPage() {
   const { refetch } = useSettings()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    if (!searchParams) return
+
+    const success = searchParams.get('success')
+    const integration = searchParams.get('integration')
+
+    if (success === 'true' && integration === 'google') {
+      toast.success('Google Drive connected successfully.')
+      // Clean up the URL so we don't show the toast again on refresh.
+      router.replace('/settings', { scroll: false })
+    }
+  }, [searchParams, router])
 
   return (
     <AppShell>

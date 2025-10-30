@@ -58,7 +58,7 @@ async def oauth2_callback(provider: str, code: str, state: str, session: Session
             await credentials.save()
 
         # Redirect the user to the frontend settings page, or a success page
-        return RedirectResponse(url="/settings/integrations?success=true")
+        return RedirectResponse(url="/settings?integration=google&success=true")
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
