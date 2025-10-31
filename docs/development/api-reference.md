@@ -11,13 +11,13 @@ Open Notebook provides a comprehensive REST API for programmatic access to all f
 
 ## 🔐 Authentication
 
-Open Notebook supports optional password-based authentication via the `APP_PASSWORD` environment variable.
+Open Notebook supports optional password-based authentication via the `OPEN_NOTEBOOK_PASSWORD` environment variable.
 
 ### Authentication Header
 
 ```bash
-# If APP_PASSWORD is set
-curl -H "Authorization: Bearer YOUR_PASSWORD" \
+# If OPEN_NOTEBOOK_PASSWORD is set
+curl -H "Authorization: Bearer your_password" \
   http://localhost:5055/api/notebooks
 ```
 
@@ -89,7 +89,7 @@ Get a specific notebook by ID.
 **Path Parameters**:
 - `notebook_id` (string): Notebook ID
 
-**Response**: Same as POST response
+**Response**: Detailed source object including notebook associations and processing status (`command_id`, `status`, `processing_info`).
 
 ### PUT /api/notebooks/{notebook_id}
 
@@ -129,39 +129,41 @@ Manage content sources within notebooks.
 
 ### POST /api/sources
 
-Create a new source.
+Create a new source. The endpoint accepts either multipart form-data (for uploads) or JSON. Fields:
 
-**Request Body**:
-```json
-{
-  "notebook_id": "notebook:uuid",
-  "type": "link",
-  "url": "https://example.com/article",
-  "title": "Optional title",
-  "transformations": ["transformation:uuid"],
-  "embed": true,
-  "delete_source": false
-}
-```
+| Field | Type | Notes |
+|-------|------|-------|
+| `type` | string | Required. One of `link`, `upload`, `text`. |
+| `url` | string | Required for `link` sources. |
+| `content` | string | Required for `text` sources. |
+| `file` / `file_path` | file/string | Upload or absolute path for `upload` sources. |
+| `notebooks` | array\<string> | Optional list of notebook IDs. Deprecated `notebook_id` is still accepted and automatically converted. |
+| `transformations` | array\<string> | Optional transformation IDs to queue. |
+| `embed` | boolean | Whether to immediately embed content (default `false`). |
+| `delete_source` | boolean | Remove uploaded temp file after processing. |
+| `async_processing` | boolean | Queue processing and return immediately (default `false`). |
 
 **Source Types**:
-- `link`: Web URL
-- `upload`: File upload
-- `text`: Direct text content
+- `link`: Fetch content from a URL.
+- `upload`: Process an uploaded file.
+- `text`: Use raw text provided in the payload.
 
 **Response**:
 ```json
 {
   "id": "source:uuid",
   "title": "Article Title",
-  "topics": ["AI", "Machine Learning"],
   "asset": {
     "url": "https://example.com/article"
   },
-  "full_text": "Article content...",
-  "embedded_chunks": 15,
-  "created": "2024-01-01T00:00:00Z",
-  "updated": "2024-01-01T00:00:00Z"
+  "embedded": true,
+  "embedded_chunks": 12,
+  "command_id": "command:uuid",
+  "status": "queued",
+  "processing_info": null,
+  "notebooks": ["notebook:abc123"],
+  "created": "2025-01-01T00:00:00Z",
+  "updated": "2025-01-01T00:00:00Z"
 }
 ```
 
@@ -184,8 +186,16 @@ Get all sources with optional filtering.
     "asset": {
       "url": "https://example.com/article"
     },
-    "embedded_chunks": 15,
+    "embedded": true,
+    "embedded_chunks": 12,
     "insights_count": 3,
+    "command_id": "command:uuid",
+    "status": "completed",
+    "processing_info": {
+      "started_at": "2025-01-01T00:00:05Z",
+      "completed_at": "2025-01-01T00:02:14Z",
+      "error": null
+    },
     "created": "2024-01-01T00:00:00Z",
     "updated": "2024-01-01T00:00:00Z"
   }
@@ -199,7 +209,7 @@ Get a specific source by ID.
 **Path Parameters**:
 - `source_id` (string): Source ID
 
-**Response**: Same as POST response
+**Response**: Includes notebook associations and processing metadata (`command_id`, `status`, `processing_info`).
 
 ### PUT /api/sources/{source_id}
 
@@ -994,9 +1004,9 @@ Build context for chat based on notebook content and configuration.
 ```
 
 **Context Configuration Values**:
-- `"full content"`: Include complete source/note content
-- `"insights only"`: Include source insights/summary only  
-- `"not in context"`: Exclude from context
+- `"full content"`: Include the full text plus insights.
+- `"insights only"`: Include only generated insights/summaries.
+- `"not in context"`: Skip the item entirely (any string containing `"not in"` is treated as exclusion).
 
 **Response**:
 ```json
@@ -1028,30 +1038,29 @@ Build context for chat based on notebook content and configuration.
 
 Manage context configuration for AI operations.
 
-### POST /api/context
+### POST /api/notebooks/{notebook_id}/context
 
-Get context information for a notebook.
+Get context information for a notebook. This endpoint powers UI previews and mirrors the behavior of `/api/chat/context`, but scopes the notebook ID in the path.
+
+**Path Parameters**:
+- `notebook_id` (string): Notebook ID.
 
 **Request Body**:
 ```json
 {
-  "notebook_id": "notebook:uuid",
   "context_config": {
     "sources": {
-      "source:uuid1": "full",
-      "source:uuid2": "summary"
+      "source:uuid1": "full content",
+      "source:uuid2": "insights only"
     },
     "notes": {
-      "note:uuid1": "full"
+      "note:uuid1": "full content"
     }
   }
 }
 ```
 
-**Context Levels**:
-- `full`: Include complete content
-- `summary`: Include summary only
-- `exclude`: Exclude from context
+**Context Levels**: Same as `/api/chat/context` (`"full content"`, `"insights only"`, `"not in context"`). Omitting `context_config` returns a short, insight-focused context for every source and note linked to the notebook.
 
 **Response**:
 ```json

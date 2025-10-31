@@ -10,7 +10,7 @@ Open Notebook follows a modern layered architecture with clear separation of con
 ┌─────────────────────────────────────────────────────────────┐
 │                    Frontend Layer                           │
 ├─────────────────────────────────────────────────────────────┤
-│  React frontend (pages/)  │  REST API Clients (external)     │
+│  Next.js frontend (src/app/) │  REST API Clients (external)  │
 └─────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
@@ -73,7 +73,7 @@ async def create_notebook(notebook: NotebookCreate):
 - **Services**: Domain-specific business logic
 - **Validation**: Data integrity and business rules
 
-**Architecture Pattern**: Domain-Driven Design (DDD) with rich domain models
+**Architecture Pattern**: Hybrid Domain-Driven Design (DDD). The codebase uses rich domain objects for persistence and validation, while API services sometimes call repository helpers directly for performance-sensitive list views or aggregate queries. When adding new features, prefer encapsulating behavior on the domain model (`save`, `vectorize`, `get_context`) and use service modules to orchestrate cross-domain workflows (e.g., queueing commands, joining API responses). This keeps business rules close to the data model while allowing pragmatic shortcuts where the full repository abstraction would add unnecessary overhead.
 
 ```python
 # Example domain model
@@ -241,14 +241,15 @@ DEFINE FIELD speakers.*.personality ON TABLE speaker_profile TYPE option<string>
 
 ### Relationships
 
-**Record Links** (SurrealDB native relationships):
-- `source.notebook_id` → `notebook` records
-- `note.notebook_id` → `notebook` records
-- `episode.command` → `command` records
+**Record Links** (SurrealDB relations):
+- `reference` table links `source` → `notebook`
+- `artifact` table links `note` → `notebook`
+- `refers_to` table links `chat_session` → `notebook`
+- `command` references are stored on the domain object (for worker status)
 
-**Embedding Relationships**:
-- Sources and notes can have vector embeddings for semantic search
-- Embeddings are stored as arrays of numbers in the same record
+**Embedding Stores**:
+- Embedded content lives in the `source_embedding` and `source_insight` tables
+- `note` embeddings are stored on the note record because they represent single documents
 
 ## 🔄 Service Communication
 
@@ -297,6 +298,10 @@ graph TB
     G --> H[Client Notification]
 ```
 
+### Extensibility via Plugins
+
+Open Notebook exposes a lightweight plugin surface in `open_notebook/plugins/`. Plugins are regular Python modules that register domain models or orchestration code (for example, the podcast generator integrates with external TTS providers). Plugins are imported alongside the API process so they can define SurrealDB tables, register commands, or extend LangGraph workflows. When authoring a plugin, keep dependencies optional and document any new environment variables in the module docstring so operators can discover them.
+
 ## 🔧 Configuration Management
 
 ### Environment Variables
@@ -318,33 +323,19 @@ GOOGLE_API_KEY=AI...
 ```
 
 **Application Configuration**:
-```bash
-APP_PASSWORD=optional_password
-DEBUG=false
-LOG_LEVEL=INFO
-```
+- `OPEN_NOTEBOOK_PASSWORD`: optional bearer password for API + UI
+- `SESSION_SECRET_KEY`: FastAPI session middleware secret (required)
+- `API_BASE_URL`: Frontend override when proxying the API
+- Logging level is controlled via the `LOGURU_LEVEL` env var (defaults to `INFO`)
 
 ### Configuration Loading
 
-Configuration is managed through the `open_notebook/config.py` module:
+Configuration is intentionally lightweight:
+- `open_notebook/config.py` defines runtime directories (uploads, LangGraph checkpoints, tokenizer cache) and creates them on import.
+- Service modules read environment variables directly at the point of use (e.g., `api/chat_service.py` checks `OPEN_NOTEBOOK_PASSWORD`, `open_notebook/database/repository.py` reads SurrealDB settings).
+- Default values are provided close to each concern, and validation is handled by Pydantic domain models or explicit error paths (see `api/main.py` startup checks).
 
-```python
-class Config:
-    """Application configuration with environment variable support."""
-    
-    # Database settings
-    database_url: str = os.getenv("SURREAL_URL", "ws://localhost:8000/rpc")
-    database_user: str = os.getenv("SURREAL_USER", "root")
-    database_password: str = os.getenv("SURREAL_PASSWORD", "password")
-    
-    # AI provider settings
-    openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
-    anthropic_api_key: Optional[str] = os.getenv("ANTHROPIC_API_KEY")
-    
-    # Application settings
-    app_password: Optional[str] = os.getenv("APP_PASSWORD")
-    debug: bool = os.getenv("DEBUG", "false").lower() == "true"
-```
+When introducing new configuration, prefer adding Pydantic validators to the domain object or module that consumes it so failures surface early.
 
 ## 🔍 Search Architecture
 

@@ -9,6 +9,13 @@ Welcome to the Open Notebook development documentation! This section provides co
 - **[API Reference](api-reference.md)** - Complete REST API documentation
 - **[Contributing Guide](contributing.md)** - Development workflow and standards
 
+### Feature Deep Dives
+- **Authentication & OAuth**: Google OAuth configuration and smoke tests in the [Installation Guide](../getting-started/installation.md#test-google-drive-integration-oauth-smoke-test).
+- **Google Drive Integration**: UI workflow documented in the [User Guide → Sources](../user-guide/sources.md#google-drive-imports).
+- **Batch Processing**: Transformation batching explained in [Features → Transformations](../features/transformations.md#batch-processing-capabilities).
+- **Command Queue & Embeddings**: API surface described in the [API Reference](api-reference.md#-commands-api) and [Embedding API](api-reference.md#-embedding-api).
+- **Context Builder**: Configuration examples in [API Reference → Chat Context](api-reference.md#post-apichatcontext) and [Context API](api-reference.md#post-apinotebooksnotebook_idcontext).
+- **Podcast & Speaker Profiles**: Multi-speaker pipelines detailed in [Features → Podcasts](../features/podcasts.md).
 ### Development Setup
 Before diving into the documentation below, make sure you have Open Notebook set up locally:
 
