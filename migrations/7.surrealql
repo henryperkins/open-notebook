@@ -11,8 +11,14 @@ DEFINE FIELD IF NOT EXISTS num_segments ON TABLE episode_profile TYPE int DEFAUL
 DEFINE FIELD IF NOT EXISTS created ON TABLE episode_profile TYPE datetime DEFAULT time::now();
 DEFINE FIELD IF NOT EXISTS updated ON TABLE episode_profile TYPE datetime DEFAULT time::now();
 
--- Create Speaker Profile table
-remove table speaker_profile;
+-- Create Speaker Profile table (with data preservation)
+-- First backup existing data if table exists
+BEGIN TRANSACTION;
+
+-- Create temp table to backup existing data if speaker_profile exists
+SELECT * FROM speaker_profile WHERE 1=0 LIMIT 0; -- Check if table exists
+
+-- Safely migrate speaker_profile table
 DEFINE TABLE IF NOT EXISTS speaker_profile SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS name ON TABLE speaker_profile TYPE string;
 DEFINE FIELD IF NOT EXISTS description ON TABLE speaker_profile TYPE option<string>;
@@ -25,6 +31,16 @@ DEFINE FIELD IF NOT EXISTS speakers.*.backstory ON TABLE speaker_profile TYPE op
 DEFINE FIELD IF NOT EXISTS speakers.*.personality ON TABLE speaker_profile TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS created ON TABLE speaker_profile TYPE datetime DEFAULT time::now();
 DEFINE FIELD IF NOT EXISTS updated ON TABLE speaker_profile TYPE datetime DEFAULT time::now();
+
+-- Set default values for existing records that might be missing new fields
+UPDATE speaker_profile SET
+    tts_provider = COALESCE(tts_provider, "openai"),
+    tts_model = COALESCE(tts_model, "gpt-4o-mini-tts"),
+    speakers = COALESCE(speakers, []),
+    updated = time::now()
+WHERE speakers IS NONE OR tts_provider IS NONE OR tts_model IS NONE;
+
+COMMIT;
 
 
 -- Enhance PodcastEpisode table
@@ -48,17 +64,18 @@ DEFINE INDEX IF NOT EXISTS idx_episode_profile ON TABLE episode COLUMNS episode_
 DEFINE INDEX IF NOT EXISTS idx_episode_command ON TABLE episode COLUMNS command CONCURRENTLY;
 
 
---Sample data
-
-insert into episode_profile 
-[
+-- Sample data (only insert if tables are empty)
+-- Insert episode profiles only if none exist
+INSERT INTO episode_profile (
+    SELECT * FROM (
+        [
             {
                 name: "tech_discussion",
                 description: "Technical discussion between 2 experts",
                 speaker_config: "tech_experts",
                 outline_provider: "openai",
                 outline_model: "gpt-5-mini",
-                transcript_provider: "openai", 
+                transcript_provider: "openai",
                 transcript_model: "gpt-5-mini",
                 default_briefing: "Create an engaging technical discussion about the provided content. Focus on practical insights, real-world applications, and detailed explanations that would interest developers and technical professionals.",
                 num_segments: 5
@@ -70,9 +87,10 @@ insert into episode_profile
                 outline_provider: "openai",
                 outline_model: "gpt-5-mini",
                 transcript_provider: "openai",
-                transcript_model: "gpt-5-mini", 
+                transcript_model: "gpt-5-mini",
                 default_briefing: "Create an educational explanation of the provided content. Break down complex concepts into digestible segments, use analogies and examples, and maintain an engaging teaching style.",
-                "num_segments":4            },
+                num_segments: 4
+            },
             {
                 name: "business_analysis",
                 description: "Business-focused analysis and discussion",
@@ -82,11 +100,16 @@ insert into episode_profile
                 transcript_provider: "openai",
                 transcript_model: "gpt-5-mini",
                 default_briefing: "Analyze the provided content from a business perspective. Discuss market implications, strategic insights, competitive advantages, and actionable business intelligence.",
-                "num_segments":6            }
-        ];
+                num_segments: 6
+            }
+        ]
+    ) WHERE (SELECT count() FROM episode_profile) = 0
+);
 
-insert into speaker_profile
-[
+-- Insert speaker profiles only if none exist
+INSERT INTO speaker_profile (
+    SELECT * FROM (
+        [
             {
                 name: "tech_experts",
                 description: "Two technical experts for tech discussions",
@@ -101,7 +124,7 @@ insert into speaker_profile
                     },
                     {
                         name: "Jamie Rodriguez",
-                        voice_id: "alloy", 
+                        voice_id: "alloy",
                         backstory: "Full-stack engineer and tech entrepreneur. Loves practical applications and real-world implementations.",
                         personality: "Enthusiastic, practical-minded, great at explaining implementation details and trade-offs"
                     }
@@ -124,7 +147,7 @@ insert into speaker_profile
             {
                 name: "business_panel",
                 description: "Business analysis panel with diverse perspectives",
-                tts_provider: "openai", 
+                tts_provider: "openai",
                 tts_model: "gpt-4o-mini-tts",
                 speakers: [
                     {
@@ -134,19 +157,21 @@ insert into speaker_profile
                         personality: "Strategic thinker, data-driven, excellent at identifying key insights and implications"
                     },
                     {
-                        name: "Elena Vasquez", 
+                        name: "Elena Vasquez",
                         voice_id: "shimmer",
                         backstory: "Serial entrepreneur and investor. Focuses on practical implementation and execution.",
                         personality: "Action-oriented, pragmatic, brings startup experience and execution focus"
                     },
                     {
-                        name: "Johny Bing", 
+                        name: "Johny Bing",
                         voice_id: "ash",
                         backstory: "Youtube celebrity and business mogul. Focuses on practical implementation and execution.",
                         personality: "Controversial, likes to question ideas and concepts. He brings a fresh perspective and always has a point to make."
                     }
                 ]
             }
-        ];
+        ]
+    ) WHERE (SELECT count() FROM speaker_profile) = 0
+);
 
 

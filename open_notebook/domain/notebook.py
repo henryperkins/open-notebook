@@ -266,33 +266,20 @@ class Source(ObjectModel):
         logger.info(f"Starting vectorization for source {self.id}")
         EMBEDDING_MODEL = await model_manager.get_embedding_model()
 
+        if not self.full_text:
+            logger.warning(f"No text to vectorize for source {self.id}")
+            return
+
+        chunks = split_text(self.full_text)
+        chunk_count = len(chunks)
+        logger.info(f"Split into {chunk_count} chunks for source {self.id}")
+
+        if chunk_count == 0:
+            logger.warning("No chunks created after splitting")
+            return
+
         try:
-            # DELETE EXISTING EMBEDDINGS FIRST - Makes vectorize() idempotent
-            delete_result = await repo_query(
-                "DELETE source_embedding WHERE source = $source_id",
-                {"source_id": ensure_record_id(self.id)}
-            )
-            deleted_count = len(delete_result) if delete_result else 0
-            if deleted_count > 0:
-                logger.info(f"Deleted {deleted_count} existing embeddings for source {self.id}")
-            else:
-                logger.debug(f"No existing embeddings found for source {self.id}")
-
-            if not self.full_text:
-                logger.warning(f"No text to vectorize for source {self.id}")
-                return
-
-            chunks = split_text(
-                self.full_text,
-            )
-            chunk_count = len(chunks)
-            logger.info(f"Split into {chunk_count} chunks for source {self.id}")
-
-            if chunk_count == 0:
-                logger.warning("No chunks created after splitting")
-                return
-
-            # Process chunks concurrently using async gather
+            # Process chunks concurrently using async gather with error resilience
             logger.info("Starting concurrent processing of chunks")
 
             async def process_chunk(
@@ -310,32 +297,71 @@ class Source(ObjectModel):
                     logger.error(f"Error processing chunk {idx}: {str(e)}")
                     raise
 
-            # Create tasks for all chunks and process them concurrently
+            # Create tasks for all chunks and process them concurrently with return_exceptions=True
             tasks = [process_chunk(idx, chunk) for idx, chunk in enumerate(chunks)]
-            results = await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            logger.info(f"Parallel processing complete. Got {len(results)} results")
+            # Check for processing errors before proceeding
+            failed_chunks = []
+            successful_results = []
 
-            # Insert results in order (they're already ordered by index)
-            for idx, embedding, content in results:
-                logger.debug(f"Inserting chunk {idx} into database")
-                await repo_query(
-                    """
-                    CREATE source_embedding CONTENT {
-                            "source": $source_id,
-                            "order": $order,
-                            "content": $content,
-                            "embedding": $embedding,
-                    };""",
-                    {
-                        "source_id": ensure_record_id(self.id),
-                        "order": idx,
-                        "content": content,
-                        "embedding": embedding,
-                    },
-                )
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    failed_chunks.append(i)
+                    logger.error(f"Chunk {i} failed to process: {result}")
+                else:
+                    successful_results.append(result)
 
-            logger.info(f"Vectorization complete for source {self.id}")
+            if failed_chunks:
+                raise RuntimeError(f"Failed to process {len(failed_chunks)} chunks: {failed_chunks}")
+
+            logger.info(f"Parallel processing complete. Got {len(successful_results)} successful results")
+
+            # Atomic swap using a single database connection for the entire transaction
+            from open_notebook.database.repository import db_connection
+
+            async with db_connection() as db:
+                # Begin transaction on this connection
+                await db.query("BEGIN TRANSACTION")
+
+                try:
+                    # Delete old embeddings on the same connection
+                    delete_result = await db.query(
+                        "DELETE source_embedding WHERE source = $source_id",
+                        {"source_id": ensure_record_id(self.id)}
+                    )
+                    deleted_count = len(delete_result) if delete_result else 0
+                    if deleted_count > 0:
+                        logger.info(f"Deleted {deleted_count} existing embeddings for source {self.id}")
+
+                    # Insert new embeddings on the same connection
+                    for idx, embedding, content in successful_results:
+                        logger.debug(f"Inserting chunk {idx} into database")
+                        await db.query(
+                            """
+                            CREATE source_embedding CONTENT {
+                                "source": $source_id,
+                                "order": $order,
+                                "content": $content,
+                                "embedding": $embedding,
+                            };""",
+                            {
+                                "source_id": ensure_record_id(self.id),
+                                "order": idx,
+                                "content": content,
+                                "embedding": embedding,
+                            },
+                        )
+
+                    # Commit transaction on the same connection
+                    await db.query("COMMIT")
+                    logger.info(f"Vectorization complete for source {self.id}")
+
+                except Exception as e:
+                    # Rollback on the same connection
+                    await db.query("ROLLBACK")
+                    logger.error(f"Transaction rolled back due to error: {str(e)}")
+                    raise
 
         except Exception as e:
             logger.error(f"Error vectorizing source {self.id}: {str(e)}")

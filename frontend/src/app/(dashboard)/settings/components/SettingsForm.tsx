@@ -13,6 +13,7 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { useSettings, useUpdateSettings } from '@/lib/hooks/use-settings'
 import { useEffect, useState } from 'react'
 import { ChevronDownIcon } from 'lucide-react'
+import { getApiUrl } from '@/lib/config'
 
 const settingsSchema = z.object({
   default_content_processing_engine_doc: z.enum(['auto', 'docling', 'simple']).optional(),
@@ -28,6 +29,11 @@ export function SettingsForm() {
   const updateSettings = useUpdateSettings()
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
   const [hasResetForm, setHasResetForm] = useState(false)
+
+  // OAuth (Google Drive) local state
+  const [gdriveConnected, setGdriveConnected] = useState<boolean | null>(null)
+  const [gdriveLoading, setGdriveLoading] = useState(false)
+  const [gdriveActionLoading, setGdriveActionLoading] = useState(false)
   
   
   const {
@@ -62,6 +68,33 @@ export function SettingsForm() {
       setHasResetForm(true)
     }
   }, [hasResetForm, reset, settings])
+
+  // Fetch Google Drive integration status
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      try {
+        setGdriveLoading(true)
+        const apiUrl = await getApiUrl()
+        const res = await fetch(`${apiUrl}/api/oauth/providers/google_drive/info`, {
+          credentials: 'include',
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        if (!cancelled) {
+          setGdriveConnected(Boolean(data?.is_connected))
+        }
+      } catch {
+        // ignore network errors for status
+      } finally {
+        if (!cancelled) setGdriveLoading(false)
+      }
+    }
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const onSubmit = async (data: SettingsFormData) => {
     await updateSettings.mutateAsync(data)
@@ -275,19 +308,64 @@ export function SettingsForm() {
         <CardContent className="space-y-6">
           <div className="space-y-3">
             <Label>Google Drive</Label>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <p className="text-sm text-muted-foreground">
                 Connect your Google Drive account to import files.
               </p>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  window.location.href = "/api/oauth2/google/login";
-                }}
-              >
-                Connect
-              </Button>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground">
+                  {gdriveLoading ? 'Checking...' : gdriveConnected ? 'Connected' : 'Not connected'}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={gdriveActionLoading || gdriveLoading}
+                  onClick={async () => {
+                    const apiUrl = await getApiUrl()
+                    if (gdriveConnected) {
+                      try {
+                        setGdriveActionLoading(true)
+                        const res = await fetch(`${apiUrl}/api/oauth/integrations/google_drive`, {
+                          method: 'DELETE',
+                          credentials: 'include',
+                        })
+                        if (res.ok) {
+                          setGdriveConnected(false)
+                        }
+                      } catch (e) {
+                        console.error('Failed to disconnect Google Drive', e)
+                      } finally {
+                        setGdriveActionLoading(false)
+                      }
+                    } else {
+                      try {
+                        setGdriveActionLoading(true)
+                        const redirectUrl = `${window.location.origin}/settings?integration=google_drive&success=true`
+                        const res = await fetch(`${apiUrl}/api/oauth/authorize`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          credentials: 'include',
+                          body: JSON.stringify({
+                            provider: 'google_drive',
+                            redirect_url: redirectUrl,
+                          }),
+                        })
+                        if (!res.ok) {
+                          throw new Error(`Failed to initiate OAuth: ${res.status}`)
+                        }
+                        const data = await res.json()
+                        window.location.href = data.authorization_url
+                      } catch (e) {
+                        console.error('Failed to start OAuth flow', e)
+                      } finally {
+                        setGdriveActionLoading(false)
+                      }
+                    }
+                  }}
+                >
+                  {gdriveActionLoading ? 'Please wait...' : gdriveConnected ? 'Disconnect' : 'Connect'}
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>

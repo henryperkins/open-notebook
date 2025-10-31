@@ -161,7 +161,7 @@ ANTHROPIC_API_KEY=sk-ant-your-anthropic-key-here
 # Provides: Large context models, embeddings, TTS
 GEMINI_API_KEY=your-gemini-key-here
 # Optional: Override OAuth redirect for Google Drive (defaults to API_URL or localhost)
-# GOOGLE_REDIRECT_URI=https://notebook.example.com/api/oauth2/google/callback
+# GOOGLE_REDIRECT_URI=https://notebook.example.com/api/oauth/callback
 ```
 
 #### Vertex AI (Google Cloud)

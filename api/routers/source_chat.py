@@ -431,11 +431,12 @@ async def send_message_to_source_chat(
                 message=request.message,
                 model_override=model_override
             ),
-            media_type="text/plain",
+            media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
-                "Content-Type": "text/plain; charset=utf-8"
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Cache-Control"
             }
         )
         

@@ -62,7 +62,6 @@ class TokenResponse:
             return False
         return datetime.now(timezone.utc) >= self.expires_at
 
-    @property
     def expires_soon(self, buffer_minutes: int = 5) -> bool:
         """Check if the token expires within the buffer time."""
         if not self.expires_at:

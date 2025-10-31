@@ -40,7 +40,7 @@ OAUTH_PROVIDERS = {
             "https://www.googleapis.com/auth/userinfo.profile",
         ],
         "redirect_uri": _build_redirect_uri(
-            default_path="/api/oauth2/google/callback",
+            default_path="/api/oauth/callback",
             override_env_key="GOOGLE_REDIRECT_URI",
         ),
     }

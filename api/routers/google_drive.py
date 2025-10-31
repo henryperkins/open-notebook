@@ -1,31 +1,23 @@
-from fastapi import APIRouter, HTTPException
-from open_notebook.services.google_drive_service import GoogleDriveService
-from open_notebook.domain.credentials import OAuth2Credentials
+from fastapi import APIRouter, HTTPException, Depends
+from api.services.google_drive_service import google_drive_service, SearchQuery
+from api.routers.oauth import get_current_user
 
 router = APIRouter()
 
 @router.get("/google-drive/files")
-async def list_google_drive_files():
+async def list_google_drive_files(current_user: dict = Depends(get_current_user)):
     """
-    Lists files from the user's Google Drive.
+    Lists files from the user's Google Drive for the current user.
     """
     try:
-        # For now, we assume global credentials for a single user.
-        from open_notebook.database.repository import repo_query
-        
-        existing_credentials_data = await repo_query(
-            "SELECT * FROM oauth2_credentials WHERE provider = 'google'",
+        user_id = current_user.get("id", "anonymous")
+        # Default: list recent files with standard page size
+        result = await google_drive_service.list_files(
+            user_id=user_id,
+            query=SearchQuery(),
+            page_token=None,
         )
-
-        if not existing_credentials_data:
-            raise HTTPException(status_code=401, detail="Google Drive not authenticated.")
-
-        credentials = OAuth2Credentials(**existing_credentials_data[0])
-        
-        service = GoogleDriveService(credentials.credentials)
-        files = service.list_files()
-        return {"files": files}
-
+        return result
     except HTTPException as e:
         raise e
     except Exception as e:

@@ -4,8 +4,10 @@ Batch upload API endpoints with comprehensive error handling and progress tracki
 
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
+import os
+import secrets
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Depends
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse
 from loguru import logger
 
@@ -15,11 +17,45 @@ from api.services.batch_upload_service import (
     BatchUploadStatusResponse,
     ProcessingPriority
 )
-# from api.auth import get_current_user  # Will be implemented when auth system is ready
 
-# Temporary mock authentication for development
-async def get_current_user():
-    return {"id": "dev-user", "username": "dev"}
+
+async def get_current_user(request: Request) -> Dict[str, str]:
+    """
+    Get the current authenticated user.
+
+    When password auth is enabled, creates a session-based user identifier.
+    When password auth is disabled, uses a consistent anonymous identifier.
+    """
+    # Check if password auth is enabled
+    password_enabled = bool(os.environ.get("OPEN_NOTEBOOK_PASSWORD"))
+
+    if password_enabled:
+        # For password-protected instances, use session-based identification
+        if "user_id" not in request.session:
+            # Create a unique user ID for this session
+            request.session["user_id"] = f"session-{secrets.token_urlsafe(16)}"
+            request.session["created_at"] = datetime.now(timezone.utc).isoformat()
+
+        return {
+            "id": request.session["user_id"],
+            "username": f"user-{request.session['user_id'][:8]}",
+            "authenticated": True
+        }
+    else:
+        # For non-password instances, create a consistent anonymous user
+        # This allows batch uploads to work while maintaining isolation
+        client_ip = request.client.host if request.client else "unknown"
+        user_agent = request.headers.get("user-agent", "")
+
+        # Create a consistent but anonymous identifier
+        import hashlib
+        identifier = f"{client_ip}:{hashlib.sha256(user_agent.encode()).hexdigest()[:16]}"
+
+        return {
+            "id": f"anon-{hashlib.sha256(identifier.encode()).hexdigest()[:16]}",
+            "username": "anonymous",
+            "authenticated": False
+        }
 
 from pydantic import BaseModel, Field
 
@@ -41,6 +77,7 @@ class BatchControlRequest(BaseModel):
 
 @router.post("/init", response_model=BatchUploadResponse)
 async def initiate_batch_upload(
+    request: Request,
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     notebook_ids: Optional[str] = Form(default=None),
@@ -120,6 +157,7 @@ async def initiate_batch_upload(
 
 @router.get("/{batch_id}/status", response_model=BatchUploadStatusResponse)
 async def get_batch_upload_status(
+    request: Request,
     batch_id: str,
     current_user: dict = Depends(get_current_user)
 ):
@@ -159,6 +197,7 @@ async def get_batch_upload_status(
 
 @router.post("/{batch_id}/control")
 async def control_batch_upload(
+    request: Request,
     batch_id: str,
     control_request: BatchControlRequest,
     background_tasks: BackgroundTasks,
@@ -226,6 +265,7 @@ async def control_batch_upload(
 
 @router.get("/{batch_id}/files")
 async def get_batch_files(
+    request: Request,
     batch_id: str,
     status_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
@@ -287,6 +327,7 @@ async def get_batch_files(
 
 @router.get("/active")
 async def get_active_batch_uploads(
+    request: Request,
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -337,6 +378,7 @@ async def get_active_batch_uploads(
 
 @router.delete("/{batch_id}")
 async def delete_batch_upload(
+    request: Request,
     batch_id: str,
     force: bool = False,
     current_user: dict = Depends(get_current_user)
@@ -394,6 +436,7 @@ async def delete_batch_upload(
 
 @router.get("/stats")
 async def get_batch_upload_stats(
+    request: Request,
     current_user: dict = Depends(get_current_user)
 ):
     """

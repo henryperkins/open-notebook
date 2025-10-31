@@ -28,7 +28,6 @@ from api.routers import (
     sources,
     speaker_profiles,
     transformations,
-    oauth2,
     google_drive,
 )
 from api.routers import commands as commands_router
@@ -129,7 +128,6 @@ app.include_router(episode_profiles.router, prefix="/api", tags=["episode-profil
 app.include_router(speaker_profiles.router, prefix="/api", tags=["speaker-profiles"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(source_chat.router, prefix="/api", tags=["source-chat"])
-app.include_router(oauth2.router, prefix="/api", tags=["oauth2"])
 app.include_router(oauth.router)
 app.include_router(google_drive.router, prefix="/api", tags=["google-drive"])
 

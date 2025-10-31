@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from fastapi.responses import RedirectResponse
 from loguru import logger
+import secrets
+import os
 
 from api.services.oauth_service import oauth_service, OAuthState
 from pydantic import BaseModel, Field
@@ -16,9 +18,43 @@ from pydantic import BaseModel, Field
 router = APIRouter(prefix="/api/oauth", tags=["oauth"])
 
 
-# Temporary mock authentication for development
-async def get_current_user():
-    return {"id": "dev-user", "username": "dev"}
+async def get_current_user(request: Request) -> Dict[str, str]:
+    """
+    Get the current authenticated user.
+
+    When password auth is enabled, creates a session-based user identifier.
+    When password auth is disabled, uses a consistent anonymous identifier.
+    """
+    # Check if password auth is enabled
+    password_enabled = bool(os.environ.get("OPEN_NOTEBOOK_PASSWORD"))
+
+    if password_enabled:
+        # For password-protected instances, use session-based identification
+        if "user_id" not in request.session:
+            # Create a unique user ID for this session
+            request.session["user_id"] = f"session-{secrets.token_urlsafe(16)}"
+            request.session["created_at"] = datetime.now(timezone.utc).isoformat()
+
+        return {
+            "id": request.session["user_id"],
+            "username": f"user-{request.session['user_id'][:8]}",
+            "authenticated": True
+        }
+    else:
+        # For non-password instances, create a consistent anonymous user
+        # This allows OAuth to work while maintaining isolation
+        client_ip = request.client.host if request.client else "unknown"
+        user_agent = request.headers.get("user-agent", "")
+
+        # Create a consistent but anonymous identifier
+        import hashlib
+        identifier = f"{client_ip}:{hashlib.sha256(user_agent.encode()).hexdigest()[:16]}"
+
+        return {
+            "id": f"anon-{hashlib.sha256(identifier.encode()).hexdigest()[:16]}",
+            "username": "anonymous",
+            "authenticated": False
+        }
 
 
 # Request/Response Models
@@ -58,6 +94,7 @@ class IntegrationInfo(BaseModel):
 
 @router.post("/authorize", response_model=OAuthAuthorizeResponse)
 async def initiate_oauth_authorization(
+    api_request: Request,
     request: OAuthAuthorizeRequest,
     current_user: dict = Depends(get_current_user)
 ):
@@ -196,6 +233,7 @@ async def handle_oauth_callback(
 
 @router.get("/integrations")
 async def get_user_integrations(
+    request: Request,
     current_user: dict = Depends(get_current_user)
 ) -> List[IntegrationInfo]:
     """
@@ -235,6 +273,7 @@ async def get_user_integrations(
 
 @router.delete("/integrations/{provider}")
 async def revoke_integration(
+    request: Request,
     provider: str,
     current_user: dict = Depends(get_current_user)
 ):
@@ -285,6 +324,7 @@ async def revoke_integration(
 
 @router.post("/integrations/{provider}/refresh")
 async def refresh_integration(
+    request: Request,
     provider: str,
     current_user: dict = Depends(get_current_user)
 ):
@@ -367,6 +407,7 @@ async def get_available_providers():
 
 @router.get("/providers/{provider}/info")
 async def get_provider_info(
+    request: Request,
     provider: str,
     current_user: dict = Depends(get_current_user)
 ):
