@@ -78,6 +78,41 @@ async def create_transformation(transformation_data: TransformationCreate):
         )
 
 
+@router.get("/transformations/default-prompt", response_model=DefaultPromptResponse)
+async def get_default_prompt():
+    """Get the default transformation prompt."""
+    try:
+        default_prompts: DefaultPrompts = await DefaultPrompts.get_instance()  # type: ignore[assignment]
+
+        return DefaultPromptResponse(
+            transformation_instructions=default_prompts.transformation_instructions or ""
+        )
+    except Exception as e:
+        logger.error(f"Error fetching default prompt: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching default prompt: {str(e)}"
+        )
+
+
+@router.put("/transformations/default-prompt", response_model=DefaultPromptResponse)
+async def update_default_prompt(prompt_update: DefaultPromptUpdate):
+    """Update the default transformation prompt."""
+    try:
+        default_prompts: DefaultPrompts = await DefaultPrompts.get_instance()  # type: ignore[assignment]
+
+        default_prompts.transformation_instructions = prompt_update.transformation_instructions
+        await default_prompts.update()
+
+        return DefaultPromptResponse(
+            transformation_instructions=default_prompts.transformation_instructions
+        )
+    except Exception as e:
+        logger.error(f"Error updating default prompt: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error updating default prompt: {str(e)}"
+        )
+
+
 @router.get(
     "/transformations/{transformation_id}", response_model=TransformationResponse
 )
@@ -212,36 +247,3 @@ async def execute_transformation(execute_request: TransformationExecuteRequest):
         )
 
 
-@router.get("/transformations/default-prompt", response_model=DefaultPromptResponse)
-async def get_default_prompt():
-    """Get the default transformation prompt."""
-    try:
-        default_prompts: DefaultPrompts = await DefaultPrompts.get_instance()  # type: ignore[assignment]
-
-        return DefaultPromptResponse(
-            transformation_instructions=default_prompts.transformation_instructions or ""
-        )
-    except Exception as e:
-        logger.error(f"Error fetching default prompt: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Error fetching default prompt: {str(e)}"
-        )
-
-
-@router.put("/transformations/default-prompt", response_model=DefaultPromptResponse)
-async def update_default_prompt(prompt_update: DefaultPromptUpdate):
-    """Update the default transformation prompt."""
-    try:
-        default_prompts: DefaultPrompts = await DefaultPrompts.get_instance()  # type: ignore[assignment]
-
-        default_prompts.transformation_instructions = prompt_update.transformation_instructions
-        await default_prompts.update()
-
-        return DefaultPromptResponse(
-            transformation_instructions=default_prompts.transformation_instructions
-        )
-    except Exception as e:
-        logger.error(f"Error updating default prompt: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Error updating default prompt: {str(e)}"
-        )

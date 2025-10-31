@@ -1,4 +1,5 @@
 import operator
+import os
 from typing import Any, Dict, List, Optional
 
 from content_core import extract_content
@@ -64,11 +65,13 @@ async def save_source(state: SourceState) -> dict:
     # Update the source with processed content
     source.asset = Asset(url=content_state.url, file_path=content_state.file_path)
     source.full_text = content_state.content
-    
-    # Preserve existing title if none provided in processed content
-    if content_state.title:
+
+    # If no title is provided, use the filename as the title
+    if not content_state.title and content_state.file_path:
+        source.title = os.path.basename(content_state.file_path)
+    elif content_state.title:
         source.title = content_state.title
-    
+
     await source.save()
 
     # NOTE: Notebook associations are created by the API immediately for UI responsiveness

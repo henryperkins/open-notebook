@@ -665,15 +665,15 @@ wheels = [
 
 [[package]]
 name = "esperanto"
-version = "2.7.1"
+version = "2.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/54/8c/a2a9c1e7428d700963e7450aba591b2f4fbcfa61bad88654af8d92df3a00/esperanto-2.7.1.tar.gz", hash = "sha256:a18abc38d30d38c496eac62f252a9c12d243fc49fef7cc92d9d23c5b5faee741", size = 554840, upload-time = "2025-10-19T02:30:45.251Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/aa/a9/c425f1c2296145f8fb8b7f3ab74d374fd54bfce4dca587deb0b60a7081a7/esperanto-2.8.0.tar.gz", hash = "sha256:79ac32d9a37f18f289356e4d78ce8d9f036a1ecf78507764bace9e555dbc2e2d", size = 734015, upload-time = "2025-10-25T19:40:25.833Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ee/91/a2c43a4eb3c56f349d59c656783cdd8cd13149a8e521e75f77e84dcd5ac0/esperanto-2.7.1-py3-none-any.whl", hash = "sha256:ea81e531085e32828b2ecd02680088801222dd21e7a73012efdb9b68fa627ed4", size = 129593, upload-time = "2025-10-19T02:30:44.149Z" },
+    { url = "https://files.pythonhosted.org/packages/c2/01/9cd0808271096a03d54543e06b5a72c0ac7cadee4377286835d3975fbf4e/esperanto-2.8.0-py3-none-any.whl", hash = "sha256:00dd2365103726dae05fdf07cf4adeef98aaa0b21878d0b0a16885a84452a54a", size = 143914, upload-time = "2025-10-25T19:40:24.187Z" },
 ]
 
 [[package]]
@@ -2468,7 +2468,7 @@ requires-dist = [
     { name = "aiofiles", specifier = ">=25.1.0" },
     { name = "authlib" },
     { name = "content-core", specifier = ">=1.0.2" },
-    { name = "esperanto", specifier = ">=2.4.1" },
+    { name = "esperanto", specifier = ">=2.8.0" },
     { name = "fastapi", specifier = ">=0.104.0" },
     { name = "google-api-python-client" },
     { name = "google-auth-httplib2" },

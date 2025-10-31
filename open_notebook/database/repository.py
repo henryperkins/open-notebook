@@ -1,12 +1,106 @@
+import asyncio
 import os
+import random
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, TypeVar, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, TypeVar, Union
 
 from loguru import logger
 from surrealdb import AsyncSurreal, RecordID  # type: ignore
 
 T = TypeVar("T", Dict[str, Any], List[Dict[str, Any]])
+ResultT = TypeVar("ResultT")
+
+DEFAULT_MAX_RETRIES = 4
+DEFAULT_BASE_DELAY_SECONDS = 0.1
+DEFAULT_MAX_DELAY_SECONDS = 1.0
+
+
+def _parse_int_env(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        parsed = int(value)
+        if parsed < 1:
+            raise ValueError
+        return parsed
+    except ValueError:
+        logger.warning(
+            f"Invalid value for {name}={value!r}; falling back to {default}."
+        )
+        return default
+
+
+def _parse_float_env(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        parsed = float(value)
+        if parsed < 0:
+            raise ValueError
+        return parsed
+    except ValueError:
+        logger.warning(
+            f"Invalid value for {name}={value!r}; falling back to {default}."
+        )
+        return default
+
+
+MAX_RETRY_ATTEMPTS = _parse_int_env("SURREAL_MAX_RETRIES", DEFAULT_MAX_RETRIES)
+BASE_RETRY_DELAY_SECONDS = _parse_float_env(
+    "SURREAL_RETRY_BASE_DELAY", DEFAULT_BASE_DELAY_SECONDS
+)
+MAX_RETRY_DELAY_SECONDS = max(
+    BASE_RETRY_DELAY_SECONDS,
+    _parse_float_env("SURREAL_RETRY_MAX_DELAY", DEFAULT_MAX_DELAY_SECONDS),
+)
+
+RETRYABLE_ERROR_KEYWORDS = (
+    "read or write conflict",
+    "write conflict",
+    "transaction cancelled",
+    "transaction conflict",
+    "transaction aborted",
+    "deadlock",
+    "timed out while waiting for table lock",
+)
+
+
+def _is_retryable_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(keyword in message for keyword in RETRYABLE_ERROR_KEYWORDS)
+
+
+def _retry_delay_seconds(attempt: int) -> float:
+    """Exponential backoff with jitter to avoid thundering herd."""
+    backoff = min(
+        BASE_RETRY_DELAY_SECONDS * (2 ** (attempt - 1)),
+        MAX_RETRY_DELAY_SECONDS,
+    )
+    jitter = random.uniform(0, BASE_RETRY_DELAY_SECONDS)
+    return backoff + jitter
+
+
+async def _execute_with_retry(
+    operation_name: str, executor: Callable[[AsyncSurreal], Awaitable[ResultT]]
+) -> ResultT:
+    attempt = 1
+    while True:
+        try:
+            async with db_connection() as connection:
+                return await executor(connection)
+        except Exception as exc:
+            if attempt >= MAX_RETRY_ATTEMPTS or not _is_retryable_error(exc):
+                raise
+            delay = _retry_delay_seconds(attempt)
+            logger.warning(
+                f"{operation_name} hit a retryable SurrealDB error "
+                f"(attempt {attempt}/{MAX_RETRY_ATTEMPTS}); retrying in {delay:.2f}s."
+            )
+            await asyncio.sleep(delay)
+            attempt += 1
 
 
 def get_database_url():
@@ -67,16 +161,18 @@ async def repo_query(
 ) -> List[Dict[str, Any]]:
     """Execute a SurrealQL query and return the results"""
 
-    async with db_connection() as connection:
-        try:
-            result = parse_record_ids(await connection.query(query_str, vars))
-            if isinstance(result, str):
-                raise RuntimeError(result)
-            return result
-        except Exception as e:
-            logger.error(f"Query: {query_str[:200]} vars: {vars}")
-            logger.exception(e)
-            raise
+    async def _executor(connection: AsyncSurreal) -> List[Dict[str, Any]]:
+        result = parse_record_ids(await connection.query(query_str, vars))
+        if isinstance(result, str):
+            raise RuntimeError(result)
+        return result
+
+    try:
+        return await _execute_with_retry("repo_query", _executor)
+    except Exception as e:
+        logger.error(f"Query failed: {query_str[:200]} vars: {vars}")
+        logger.exception(e)
+        raise
 
 
 async def repo_create(table: str, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -86,11 +182,13 @@ async def repo_create(table: str, data: Dict[str, Any]) -> Dict[str, Any]:
     data["created"] = datetime.now(timezone.utc)
     data["updated"] = datetime.now(timezone.utc)
     try:
-        async with db_connection() as connection:
+        async def _executor(connection: AsyncSurreal) -> Dict[str, Any]:
             return parse_record_ids(await connection.insert(table, data))
+
+        return await _execute_with_retry("repo_create", _executor)
     except Exception as e:
         logger.exception(e)
-        raise RuntimeError("Failed to create record")
+        raise RuntimeError("Failed to create record") from e
 
 
 async def repo_relate(
@@ -161,11 +259,13 @@ async def repo_delete(record_id: Union[str, RecordID]):
     """Delete a record by record id"""
 
     try:
-        async with db_connection() as connection:
+        async def _executor(connection: AsyncSurreal):
             return await connection.delete(ensure_record_id(record_id))
+
+        return await _execute_with_retry("repo_delete", _executor)
     except Exception as e:
         logger.exception(e)
-        raise RuntimeError(f"Failed to delete record: {str(e)}")
+        raise RuntimeError(f"Failed to delete record: {str(e)}") from e
 
 
 async def repo_insert(
@@ -173,10 +273,12 @@ async def repo_insert(
 ) -> List[Dict[str, Any]]:
     """Create a new record in the specified table"""
     try:
-        async with db_connection() as connection:
+        async def _executor(connection: AsyncSurreal) -> List[Dict[str, Any]]:
             return parse_record_ids(await connection.insert(table, data))
+
+        return await _execute_with_retry("repo_insert", _executor)
     except Exception as e:
         if ignore_duplicates and "already contains" in str(e):
             return []
         logger.exception(e)
-        raise RuntimeError("Failed to create record")
+        raise RuntimeError("Failed to create record") from e
