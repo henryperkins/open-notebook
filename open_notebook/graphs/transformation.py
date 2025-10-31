@@ -1,3 +1,5 @@
+from typing import Any, Mapping, Optional, cast
+
 from ai_prompter import Prompter
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
@@ -17,13 +19,17 @@ class TransformationState(TypedDict):
     output: str
 
 
-async def run_transformation(state: dict, config: RunnableConfig) -> dict:
+async def run_transformation(
+    state: Mapping[str, Any],
+    config: RunnableConfig | None,
+) -> dict[str, Any]:
     source_obj = state.get("source")
-    source: Source = source_obj if isinstance(source_obj, Source) else None  # type: ignore[assignment]
+    source: Optional[Source] = source_obj if isinstance(source_obj, Source) else None
     content = state.get("input_text")
-    assert source or content, "No content to transform"
-    transformation: Transformation = state["transformation"]
+    assert source is not None or content, "No content to transform"
+    transformation = cast(Transformation, state["transformation"])
     if not content:
+        assert source is not None
         content = source.full_text
     transformation_template_text = transformation.prompt
     default_prompts: DefaultPrompts = DefaultPrompts(transformation_instructions=None)
@@ -33,13 +39,17 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
     transformation_template_text = f"{transformation_template_text}\n\n# INPUT"
 
     system_prompt = Prompter(template_text=transformation_template_text).render(
-        data=state
+        data=dict(state)
     )
     content_str = str(content) if content else ""
     payload = [SystemMessage(content=system_prompt), HumanMessage(content=content_str)]
+    config_mapping = cast(Mapping[str, Any], config)
+    configurable = cast(Mapping[str, Any], config_mapping.get("configurable", {}))
+    model_id = configurable.get("model_id")
+
     chain = await provision_langchain_model(
         str(payload),
-        config.get("configurable", {}).get("model_id"),
+        model_id,
         "transformation",
         max_tokens=5055,
     )
@@ -50,7 +60,7 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
     response_content = response.content if isinstance(response.content, str) else str(response.content)
     cleaned_content = clean_thinking_content(response_content)
 
-    if source:
+    if source is not None:
         await source.add_insight(transformation.title, cleaned_content)
 
     return {

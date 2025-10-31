@@ -6,13 +6,17 @@ and intelligent caching for optimal performance.
 import json
 import mimetypes
 import os
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Any, Tuple, AsyncGenerator
-from dataclasses import dataclass, asdict
-from urllib.parse import urlencode, quote
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Tuple, Union
+from urllib.parse import quote, urlencode
+
 import httpx
-from loguru import logger
 from fastapi import HTTPException
+from loguru import logger
+
+from api.sources_service import SourceProcessingResult, create_source
+from open_notebook.domain.notebook import Source
 
 from .oauth_service import oauth_service
 
@@ -29,7 +33,7 @@ class GoogleDriveFile:
     parents: List[str]
     web_view_link: str
     web_content_link: Optional[str] = None
-    metadata: Dict[str, Any] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.metadata is None:
@@ -64,8 +68,8 @@ class GoogleDriveFile:
     def is_supported_for_download(self) -> bool:
         """Check if file can be downloaded for processing."""
         return (
-            not self.is_folder and
-            (self.web_content_link or not self.is_document)
+            not self.is_folder
+            and (bool(self.web_content_link) or not self.is_document)
         )
 
     @property
@@ -116,7 +120,7 @@ class GoogleDriveFile:
 class SearchQuery:
     """Search query builder for Google Drive files."""
     query: str = ""
-    mime_types: List[str] = None
+    mime_types: List[str] = field(default_factory=list)
     folder_id: Optional[str] = None
     file_size_min: Optional[int] = None
     file_size_max: Optional[int] = None
@@ -126,17 +130,14 @@ class SearchQuery:
     order_by: str = "modifiedTime desc"
     page_size: int = 100
 
-    def __post_init__(self):
-        if self.mime_types is None:
-            self.mime_types = []
-
     def build_query(self) -> str:
         """Build Google Drive query string."""
         conditions = []
 
         if self.query:
             # Full-text search
-            conditions.append(f"fullText contains '{self.query.replace("'", "\\'")}'")
+            escaped_query = self.query.replace("'", "\\'")
+            conditions.append(f"fullText contains '{escaped_query}'")
 
         if self.mime_types:
             mime_conditions = [f"mimeType = '{mime}'" for mime in self.mime_types]
@@ -170,7 +171,7 @@ class GoogleDriveService:
 
     def __init__(self):
         self.http_client = httpx.AsyncClient(timeout=60.0)
-        self.cache = {}  # In production, use Redis or similar
+        self.cache: Dict[str, Tuple[Any, datetime]] = {}
         self.cache_ttl = timedelta(minutes=15)
 
     def _cache_key(self, user_id: str, operation: str, **kwargs) -> str:
@@ -198,7 +199,7 @@ class GoogleDriveService:
         url: str,
         method: str = "GET",
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> Union[Dict[str, Any], bytes]:
         """
         Make authenticated API request to Google Drive.
 
@@ -227,8 +228,7 @@ class GoogleDriveService:
             content_type = response.headers.get('content-type', '')
             if 'application/json' in content_type:
                 return response.json()
-            else:
-                return {'content': response.content, 'headers': dict(response.headers)}
+            return response.content
 
         except httpx.HTTPStatusError as e:
             logger.error(f"Google Drive API error: {e.response.status_code} - {e.response.text}")
@@ -241,7 +241,10 @@ class GoogleDriveService:
                     headers['Authorization'] = f'Bearer {new_token.access_token}'
                     response = await self.http_client.request(method, url, headers=headers, **kwargs)
                     response.raise_for_status()
-                    return response.json() if 'application/json' in response.headers.get('content-type', '') else {'content': response.content}
+                    content_type = response.headers.get('content-type', '')
+                    if 'application/json' in content_type:
+                        return response.json()
+                    return response.content
 
             raise HTTPException(
                 status_code=e.response.status_code,
@@ -292,6 +295,9 @@ class GoogleDriveService:
         try:
             response = await self._make_api_request(user_id, url)
 
+            if not isinstance(response, dict):
+                raise HTTPException(status_code=500, detail="Unexpected response format from Google Drive")
+
             # Convert API response to our format
             files = [GoogleDriveFile.from_api_response(file_data) for file_data in response.get('files', [])]
 
@@ -339,6 +345,9 @@ class GoogleDriveService:
         try:
             response = await self._make_api_request(user_id, full_url)
 
+            if not isinstance(response, dict):
+                raise HTTPException(status_code=500, detail="Unexpected metadata response from Google Drive")
+
             # Cache the result
             self._set_cache(cache_key, response)
 
@@ -376,11 +385,10 @@ class GoogleDriveService:
         try:
             response = await self._make_api_request(user_id, file_info.web_content_link)
 
-            if isinstance(response, dict) and 'content' in response:
-                return response['content']
-            else:
-                # If response is already bytes
+            if isinstance(response, bytes):
                 return response
+
+            raise HTTPException(status_code=500, detail="Unexpected response when downloading file")
 
         except Exception as e:
             logger.error(f"Failed to download file {file_id}: {str(e)}")
@@ -421,10 +429,10 @@ class GoogleDriveService:
         try:
             response = await self._make_api_request(user_id, full_url)
 
-            if isinstance(response, dict) and 'content' in response:
-                return response['content']
-            else:
+            if isinstance(response, bytes):
                 return response
+
+            raise HTTPException(status_code=500, detail="Unexpected export response from Google Drive")
 
         except Exception as e:
             logger.error(f"Failed to export Google Workspace file {file_id}: {str(e)}")
@@ -434,7 +442,7 @@ class GoogleDriveService:
         self,
         user_id: str,
         query: str = "",
-        mime_types: List[str] = None,
+        mime_types: Optional[List[str]] = None,
         folder_id: Optional[str] = None,
         page_size: int = 50,
         page_token: Optional[str] = None
@@ -527,6 +535,12 @@ class GoogleDriveService:
         Returns:
             Created source information
         """
+        if not notebook_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one notebook ID is required to sync Google Drive files",
+            )
+
         # Get file metadata
         file_info = await self.get_file_metadata(user_id, file_id)
 
@@ -540,8 +554,6 @@ class GoogleDriveService:
         file_content = await self.download_file(user_id, file_id)
 
         # Create source using existing source creation logic
-        from api.sources_service import create_source
-
         source_data = {
             "title": file_info.name,
             "type": "upload",
@@ -570,10 +582,18 @@ class GoogleDriveService:
             source_data["file_path"] = temp_file_path
 
             # Create source
-            source = await create_source(source_data)
+            try:
+                created = await create_source(source_data)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            source_obj: Source
+            if isinstance(created, SourceProcessingResult):
+                source_obj = created.source
+            else:
+                source_obj = created
 
             return {
-                "source_id": source.id,
+                "source_id": source_obj.id,
                 "file_name": file_info.name,
                 "file_size": file_info.size,
                 "mime_type": file_info.mime_type,
@@ -620,11 +640,15 @@ class GoogleDriveService:
             # Get user info
             user_info_url = "https://www.googleapis.com/oauth2/v2/userinfo"
             user_info = await self._make_api_request(user_id, user_info_url)
+            if not isinstance(user_info, dict):
+                raise HTTPException(status_code=500, detail="Unexpected user info response from Google Drive")
 
             # Get drive info
             drive_info_url = "https://www.googleapis.com/drive/v3/about"
             drive_params = {'fields': 'storageQuota,user'}
             drive_info = await self._make_api_request(user_id, f"{drive_info_url}?{urlencode(drive_params)}")
+            if not isinstance(drive_info, dict):
+                raise HTTPException(status_code=500, detail="Unexpected drive info response from Google Drive")
 
             result = {
                 'user': user_info,

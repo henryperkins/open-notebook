@@ -54,6 +54,7 @@ class ModelManager:
             self._initialized = True
             self._model_cache: Dict[str, ModelType] = {}
             self._default_models = None
+            self._defaults_loaded = False
 
     async def get_model(self, model_id: str, **kwargs) -> Optional[ModelType]:
         if not model_id:
@@ -124,14 +125,15 @@ class ModelManager:
     async def refresh_defaults(self):
         """Refresh the default models from the database and clear model cache"""
         self._default_models = await DefaultModels.get_instance()
+        self._defaults_loaded = True
         # Clear the model cache to ensure we use fresh instances with the new defaults
         self.clear_cache()
 
     async def get_defaults(self) -> DefaultModels:
         """Get the default models configuration (always fetches fresh from DB)"""
-        # Always refresh to ensure we have the latest defaults
-        # This is important when embedding models are changed
-        await self.refresh_defaults()
+        if not self._defaults_loaded or self._default_models is None:
+            await self.refresh_defaults()
+
         if not self._default_models:
             raise RuntimeError("Failed to initialize default models configuration")
         return self._default_models

@@ -8,22 +8,23 @@ import hashlib
 import mimetypes
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union, BinaryIO
-from dataclasses import dataclass, field
-from concurrent.futures import ThreadPoolExecutor
-import aiofiles
-import aiofiles.os
-from fastapi import HTTPException, UploadFile, BackgroundTasks
+from typing import BinaryIO, Dict, List, Optional, Tuple, Union
+
+import aiofiles  # type: ignore[import-untyped]
+import aiofiles.os  # type: ignore[import-untyped]
+import psutil  # type: ignore[import-untyped]
+from fastapi import BackgroundTasks, HTTPException, UploadFile
 from loguru import logger
-import psutil
 from pydantic import BaseModel, Field, validator
 
 from open_notebook.config import UPLOADS_FOLDER
-from open_notebook.database.repository import repo_query, ensure_record_id
-from open_notebook.domain.notebook import Source, Notebook
+from open_notebook.database.repository import ensure_record_id, repo_query
+from open_notebook.domain.notebook import Notebook, Source
 
 
 class BatchStatus(str, Enum):
@@ -630,7 +631,7 @@ class AdvancedBatchUploadService:
                 return
 
             # Create source using existing source creation logic
-            from api.sources_service import create_source
+            from api.sources_service import SourceProcessingResult, create_source
 
             source_data = {
                 "title": file_context.original_filename,
@@ -650,7 +651,11 @@ class AdvancedBatchUploadService:
             }
 
             # Create source
-            source = await create_source(source_data)
+            source_result = await create_source(source_data)
+            if isinstance(source_result, SourceProcessingResult):
+                source_obj = source_result.source
+            else:
+                source_obj = source_result
 
             file_context.status = FileStatus.COMPLETED
             file_context.processing_progress = 100.0
@@ -659,7 +664,7 @@ class AdvancedBatchUploadService:
             # Update progress (processing is 50% of total progress)
             batch.progress_percentage = 50.0 + (batch.processed_files / len(batch.files)) * 50.0
 
-            logger.info(f"Successfully processed {file_context.original_filename} to source {source.id}")
+            logger.info(f"Successfully processed {file_context.original_filename} to source {source_obj.id}")
 
         except Exception as e:
             file_context.status = FileStatus.FAILED

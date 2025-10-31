@@ -171,6 +171,7 @@ class TestPodcastDomain:
         with pytest.raises(ValidationError):
             SpeakerProfile(
                 name="Test",
+                description="Test description",
                 tts_provider="openai",
                 tts_model="tts-1",
                 speakers=[],
@@ -180,6 +181,7 @@ class TestPodcastDomain:
         with pytest.raises(ValidationError):
             SpeakerProfile(
                 name="Test",
+                description="Test description",
                 tts_provider="openai",
                 tts_model="tts-1",
                 speakers=[{"name": f"Speaker{i}"} for i in range(5)],
@@ -189,6 +191,7 @@ class TestPodcastDomain:
         with pytest.raises(ValidationError):
             SpeakerProfile(
                 name="Test",
+                description="Test description",
                 tts_provider="openai",
                 tts_model="tts-1",
                 speakers=[{"name": "Speaker 1"}],  # Missing voice_id, backstory, personality
@@ -197,6 +200,7 @@ class TestPodcastDomain:
         # Test valid - single speaker with all fields
         profile = SpeakerProfile(
             name="Test",
+            description="Test description",
             tts_provider="openai",
             tts_model="tts-1",
             speakers=[
@@ -244,12 +248,20 @@ class TestContentSettings:
 
     def test_content_settings_defaults(self):
         """Test ContentSettings has proper defaults."""
-        settings = ContentSettings()
+        settings = ContentSettings(
+            default_content_processing_engine_doc="auto",
+            default_content_processing_engine_url="auto",
+            default_embedding_option="ask",
+            auto_delete_files="yes",
+            youtube_preferred_languages=["en", "pt"],
+            google_drive_api_key=None,
+        )
 
         assert settings.record_id == "open_notebook:content_settings"
         assert settings.default_content_processing_engine_doc == "auto"
         assert settings.default_embedding_option == "ask"
         assert settings.auto_delete_files == "yes"
+        assert settings.youtube_preferred_languages is not None
         assert len(settings.youtube_preferred_languages) > 0
 
 
@@ -267,6 +279,7 @@ class TestEpisodeProfile:
         with pytest.raises(ValidationError, match="Number of segments must be between 3 and 20"):
             EpisodeProfile(
                 name="Test",
+                description="Test description",
                 speaker_config="default",
                 outline_provider="openai",
                 outline_model="gpt-4",
@@ -280,6 +293,7 @@ class TestEpisodeProfile:
         with pytest.raises(ValidationError, match="Number of segments must be between 3 and 20"):
             EpisodeProfile(
                 name="Test",
+                description="Test description",
                 speaker_config="default",
                 outline_provider="openai",
                 outline_model="gpt-4",
@@ -292,6 +306,7 @@ class TestEpisodeProfile:
         # Test valid segment count
         profile = EpisodeProfile(
             name="Test",
+            description="Test description",
             speaker_config="default",
             outline_provider="openai",
             outline_model="gpt-4",

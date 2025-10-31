@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, Depends
-from api.services.google_drive_service import google_drive_service, SearchQuery
+from fastapi import APIRouter, Depends, HTTPException
+
 from api.routers.oauth import get_current_user
+from api.services.google_drive_service import SearchQuery, google_drive_service
 
 router = APIRouter()
 

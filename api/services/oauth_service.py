@@ -3,20 +3,22 @@ OAuth 2.0 Service for secure third-party integrations with comprehensive token m
 security features, and support for multiple providers.
 """
 
-import os
-import json
-import secrets
-import hashlib
 import base64
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass, asdict
-from urllib.parse import urlencode, parse_qs
-import httpx
-from loguru import logger
-from fastapi import HTTPException
+import hashlib
+import json
+import os
+import secrets
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import parse_qs, urlencode
 
-from open_notebook.database.repository import repo_query, ensure_record_id
+import httpx
+from fastapi import HTTPException
+from loguru import logger
+
+from open_notebook.config.oauth_providers import get_oauth_redirect_uri
+from open_notebook.database.repository import ensure_record_id, repo_query
 
 
 @dataclass
@@ -43,31 +45,31 @@ class TokenResponse:
     expires_in: Optional[int] = None
     refresh_token: Optional[str] = None
     scope: Optional[str] = None
-    created_at: datetime = None
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
     expires_at: Optional[datetime] = None
-    metadata: Dict[str, Any] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
-        if self.created_at is None:
-            self.created_at = datetime.now(timezone.utc)
-        if self.expires_in and not self.expires_at:
+        if self.expires_in is not None and self.expires_at is None:
             self.expires_at = self.created_at + timedelta(seconds=self.expires_in)
-        if self.metadata is None:
-            self.metadata = {}
 
     @property
     def is_expired(self) -> bool:
         """Check if the access token is expired."""
-        if not self.expires_at:
+        expires_at = self.expires_at
+        if expires_at is None:
             return False
-        return datetime.now(timezone.utc) >= self.expires_at
+        return datetime.now(timezone.utc) >= expires_at
 
     def expires_soon(self, buffer_minutes: int = 5) -> bool:
         """Check if the token expires within the buffer time."""
-        if not self.expires_at:
+        expires_at = self.expires_at
+        if expires_at is None:
             return False
         buffer_time = timedelta(minutes=buffer_minutes)
-        return datetime.now(timezone.utc) >= (self.expires_at - buffer_time)
+        return datetime.now(timezone.utc) >= (expires_at - buffer_time)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage."""
@@ -75,18 +77,21 @@ class TokenResponse:
         # Convert datetime objects to ISO strings
         if data.get('created_at'):
             data['created_at'] = self.created_at.isoformat()
-        if data.get('expires_at'):
+        if data.get('expires_at') and self.expires_at is not None:
             data['expires_at'] = self.expires_at.isoformat()
         return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'TokenResponse':
         """Create from dictionary storage."""
-        if 'created_at' in data and isinstance(data['created_at'], str):
-            data['created_at'] = datetime.fromisoformat(data['created_at'])
-        if 'expires_at' in data and isinstance(data['expires_at'], str):
-            data['expires_at'] = datetime.fromisoformat(data['expires_at'])
-        return cls(**data)
+        data_copy = dict(data)
+        created_at = data_copy.get('created_at')
+        if isinstance(created_at, str):
+            data_copy['created_at'] = datetime.fromisoformat(created_at)
+        expires_at = data_copy.get('expires_at')
+        if isinstance(expires_at, str):
+            data_copy['expires_at'] = datetime.fromisoformat(expires_at)
+        return cls(**data_copy)
 
 
 @dataclass
@@ -96,22 +101,23 @@ class OAuthState:
     provider: str
     user_id: str
     redirect_url: Optional[str] = None
-    created_at: datetime = None
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
     expires_at: Optional[datetime] = None
-    metadata: Dict[str, Any] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
-        if self.created_at is None:
-            self.created_at = datetime.now(timezone.utc)
         if self.expires_at is None:
             self.expires_at = self.created_at + timedelta(minutes=10)  # 10 minute expiry
-        if self.metadata is None:
-            self.metadata = {}
 
     @property
     def is_expired(self) -> bool:
         """Check if the state is expired."""
-        return datetime.now(timezone.utc) >= self.expires_at
+        expires_at = self.expires_at
+        if expires_at is None:
+            return False
+        return datetime.now(timezone.utc) >= expires_at
 
 
 class OAuthService:
@@ -140,7 +146,9 @@ class OAuthService:
                 'https://www.googleapis.com/auth/userinfo.email',
                 'https://www.googleapis.com/auth/userinfo.profile'
             ],
-            redirect_uri=os.getenv('OAUTH_REDIRECT_URI', 'http://localhost:8000/api/oauth/callback'),
+            redirect_uri=get_oauth_redirect_uri(
+                override_env_keys=("OAUTH_REDIRECT_URI", "GOOGLE_REDIRECT_URI")
+            ),
             pkce=True
         )
 
@@ -152,7 +160,7 @@ class OAuthService:
             authorize_url='https://www.dropbox.com/oauth2/authorize',
             token_url='https://api.dropboxapi.com/oauth2/token',
             scopes=['files.metadata.read', 'files.content.read'],
-            redirect_uri=os.getenv('OAUTH_REDIRECT_URI', 'http://localhost:8000/api/oauth/callback'),
+            redirect_uri=get_oauth_redirect_uri(),
             pkce=False
         )
 
@@ -164,7 +172,7 @@ class OAuthService:
             authorize_url='https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
             token_url='https://login.microsoftonline.com/common/oauth2/v2.0/token',
             scopes=['https://graph.microsoft.com/Files.Read', 'https://graph.microsoft.com/User.Read'],
-            redirect_uri=os.getenv('OAUTH_REDIRECT_URI', 'http://localhost:8000/api/oauth/callback'),
+            redirect_uri=get_oauth_redirect_uri(),
             pkce=True
         )
 
@@ -673,7 +681,7 @@ class OAuthService:
         current_time = datetime.now(timezone.utc)
         expired_states = [
             state for state, oauth_state in self.state_cache.items()
-            if oauth_state.expires_at <= current_time
+            if oauth_state.expires_at is not None and oauth_state.expires_at <= current_time
         ]
 
         for state in expired_states:

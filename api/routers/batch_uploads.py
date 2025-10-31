@@ -2,20 +2,29 @@
 Batch upload API endpoints with comprehensive error handling and progress tracking.
 """
 
-from typing import List, Optional, Dict, Any
-from datetime import datetime, timezone
 import os
 import secrets
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Depends, Request
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import JSONResponse
 from loguru import logger
 
 from api.services.batch_upload_service import (
-    batch_upload_service,
     BatchUploadResponse,
     BatchUploadStatusResponse,
-    ProcessingPriority
+    ProcessingPriority,
+    batch_upload_service,
 )
 
 
@@ -29,36 +38,25 @@ async def get_current_user(request: Request) -> Dict[str, str]:
     # Check if password auth is enabled
     password_enabled = bool(os.environ.get("OPEN_NOTEBOOK_PASSWORD"))
 
-    if password_enabled:
-        # For password-protected instances, use session-based identification
-        if "user_id" not in request.session:
-            # Create a unique user ID for this session
-            request.session["user_id"] = f"session-{secrets.token_urlsafe(16)}"
-            request.session["created_at"] = datetime.now(timezone.utc).isoformat()
+    session_key = "user_id" if password_enabled else "anon_user_id"
 
-        return {
-            "id": request.session["user_id"],
-            "username": f"user-{request.session['user_id'][:8]}",
-            "authenticated": True
-        }
-    else:
-        # For non-password instances, create a consistent anonymous user
-        # This allows batch uploads to work while maintaining isolation
-        client_ip = request.client.host if request.client else "unknown"
-        user_agent = request.headers.get("user-agent", "")
+    if session_key not in request.session:
+        suffix = secrets.token_urlsafe(16)
+        request.session[session_key] = (
+            f"session-{suffix}" if password_enabled else f"anon-{suffix}"
+        )
+        request.session.setdefault(
+            "created_at", datetime.now(timezone.utc).isoformat()
+        )
 
-        # Create a consistent but anonymous identifier
-        import hashlib
-        identifier = f"{client_ip}:{hashlib.sha256(user_agent.encode()).hexdigest()[:16]}"
-
-        return {
-            "id": f"anon-{hashlib.sha256(identifier.encode()).hexdigest()[:16]}",
-            "username": "anonymous",
-            "authenticated": False
-        }
+    user_id = request.session[session_key]
+    return {
+        "id": user_id,
+        "username": f"user-{user_id[:8]}" if password_enabled else "anonymous",
+        "authenticated": password_enabled,
+    }
 
 from pydantic import BaseModel, Field
-
 
 router = APIRouter(prefix="/api/batch-uploads", tags=["batch-uploads"])
 
@@ -241,7 +239,7 @@ async def control_batch_upload(
             )
 
         # Get updated status
-        status = await batch_upload_service.get_batch_upload_status(batch_id)
+        status = await batch_upload_service.get_batch_status(batch_id)
 
         logger.info(f"User {current_user.get('id')} {action}ed batch upload {batch_id}")
 

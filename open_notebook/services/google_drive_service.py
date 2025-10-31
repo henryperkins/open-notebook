@@ -1,8 +1,12 @@
 from __future__ import annotations
-from typing import List, Dict, Any
-from googleapiclient.discovery import build
-from google.oauth2.credentials import Credentials
+
+from typing import Any, Dict, List
+
+from google.oauth2.credentials import Credentials  # type: ignore[import-untyped]
+from googleapiclient.discovery import build  # type: ignore[import-untyped]
+
 from open_notebook.config.oauth_providers import OAUTH_PROVIDERS
+
 
 class GoogleDriveService:
     def __init__(self, credentials: Dict[str, Any]):

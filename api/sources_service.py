@@ -2,8 +2,9 @@
 Sources service layer using API.
 """
 
+import asyncio
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from loguru import logger
 
@@ -301,5 +302,52 @@ class SourcesService:
 # Global service instance
 sources_service = SourcesService()
 
+async def create_source(source_payload: Dict[str, Any]) -> Union[Source, SourceProcessingResult]:
+    """Async wrapper to create a source using the shared service instance."""
+
+    raw_notebooks = source_payload.get("notebooks")
+    notebooks: Optional[List[str]]
+    if isinstance(raw_notebooks, list):
+        notebooks = [str(item) for item in raw_notebooks]
+    elif isinstance(raw_notebooks, str):
+        notebooks = [raw_notebooks]
+    else:
+        single_notebook = source_payload.get("notebook_id")
+        if isinstance(single_notebook, str):
+            notebooks = [single_notebook]
+        else:
+            notebooks = None
+
+    if not notebooks:
+        raise ValueError("At least one notebook ID is required to create a source")
+
+    kwargs = {
+        "notebook_id": source_payload.get("notebook_id") if isinstance(source_payload.get("notebook_id"), str) else None,
+        "notebooks": notebooks,
+        "source_type": source_payload.get("type", "text"),
+        "url": source_payload.get("url"),
+        "file_path": source_payload.get("file_path"),
+        "content": source_payload.get("content"),
+        "title": source_payload.get("title"),
+        "transformations": source_payload.get("transformations"),
+        "embed": source_payload.get("embed", False),
+        "delete_source": source_payload.get("delete_source", False),
+        "async_processing": source_payload.get("async_processing", False),
+    }
+
+    loop = asyncio.get_running_loop()
+
+    def _create() -> Union[Source, SourceProcessingResult]:
+        return sources_service.create_source(**kwargs)
+
+    return await loop.run_in_executor(None, _create)
+
+
 # Export important classes for easy importing
-__all__ = ["SourcesService", "SourceWithMetadata", "SourceProcessingResult", "sources_service"]
+__all__ = [
+    "SourcesService",
+    "SourceWithMetadata",
+    "SourceProcessingResult",
+    "sources_service",
+    "create_source",
+]

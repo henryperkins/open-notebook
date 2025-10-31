@@ -168,15 +168,26 @@ export function truncateText(text: string, maxLength: number): string {
 /**
  * Format API error messages to user-friendly text
  */
-export function formatErrorMessage(error: any): string {
+
+interface ApiError {
+  response?: {
+    data?: {
+      detail?: string
+    }
+  }
+  message?: string
+}
+
+export function formatErrorMessage(error: ApiError | string): string {
   if (typeof error === 'string') return error
 
-  if (error?.response?.data?.detail) {
-    return error.response.data.detail
+  const apiError = error as ApiError
+  if (apiError?.response?.data?.detail) {
+    return apiError.response.data.detail
   }
 
-  if (error?.message) {
-    return error.message
+  if (apiError?.message) {
+    return apiError.message
   }
 
   return 'An unexpected error occurred'

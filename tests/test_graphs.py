@@ -6,6 +6,7 @@ without heavy mocking of the actual processing logic.
 """
 
 from datetime import datetime
+from typing import Callable, cast
 
 import pytest
 
@@ -29,7 +30,11 @@ class TestGraphTools:
 
     def test_get_current_timestamp_format(self):
         """Test timestamp tool returns correct format."""
-        timestamp = get_current_timestamp.func()
+        tool_callable = cast(
+            Callable[[], str],
+            getattr(get_current_timestamp, "func", get_current_timestamp),
+        )
+        timestamp = tool_callable()
 
         assert isinstance(timestamp, str)
         assert len(timestamp) == 14  # YYYYMMDDHHmmss format
@@ -37,7 +42,11 @@ class TestGraphTools:
 
     def test_get_current_timestamp_validity(self):
         """Test timestamp represents valid datetime."""
-        timestamp = get_current_timestamp.func()
+        tool_callable = cast(
+            Callable[[], str],
+            getattr(get_current_timestamp, "func", get_current_timestamp),
+        )
+        timestamp = tool_callable()
 
         # Parse it back to datetime to verify validity
         year = int(timestamp[0:4])

@@ -3,8 +3,9 @@ Basic tests for unified /api/oauth endpoints.
 Covers: providers list, provider info, authorize flow, callback redirect.
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -36,7 +37,7 @@ def test_oauth_provider_info_not_connected(client):
 
 
 def test_oauth_authorize_success(client):
-    from api.services.oauth_service import oauth_service, OAuthState
+    from api.services.oauth_service import OAuthState, oauth_service
 
     # Seed state cache with a known state that our patched function will return
     oauth_service.state_cache.clear()
@@ -60,7 +61,7 @@ def test_oauth_authorize_success(client):
 
 
 def test_oauth_callback_success_redirect(client):
-    from api.services.oauth_service import oauth_service, OAuthState, TokenResponse
+    from api.services.oauth_service import OAuthState, TokenResponse, oauth_service
 
     oauth_service.state_cache.clear()
     oauth_service.state_cache["st1"] = OAuthState(
@@ -80,7 +81,7 @@ def test_oauth_callback_success_redirect(client):
             "exchange_code_for_tokens",
             new=AsyncMock(return_value=TokenResponse(access_token="tok", token_type="Bearer")),
         ):
-            res = client.get("/api/oauth/callback", params={"code": "code123", "state": "st1"})
+            res = client.get("/api/oauth/callback", params={"code": "code123", "state": "st1"}, follow_redirects=False)
             assert res.status_code == 302
             location = res.headers.get("location") or res.headers.get("Location")
             assert isinstance(location, str)

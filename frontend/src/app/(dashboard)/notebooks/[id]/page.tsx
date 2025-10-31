@@ -110,13 +110,12 @@ export default function NotebookPage() {
             <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 h-full min-h-0">
               <div className="flex flex-col h-full min-h-0 overflow-hidden">
                 <SourcesColumn
-                  sources={sources}
+                  sources={sources || []}
                   isLoading={sourcesLoading}
                   notebookId={notebookId}
-                  notebookName={notebook?.name}
                   onRefresh={refetchSources}
                   contextSelections={contextSelections.sources}
-                  onContextModeChange={(sourceId, mode) => handleContextModeChange(sourceId, mode, 'source')}
+                  onContextModeChange={(sourceId: string, mode: ContextMode) => handleContextModeChange(sourceId, mode, 'source')}
                 />
               </div>
               <div className="flex flex-col h-full min-h-0 overflow-hidden">

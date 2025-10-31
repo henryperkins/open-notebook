@@ -6,7 +6,7 @@ from surreal_commands import CommandInput, CommandOutput, command
 
 from api.command_service import CommandService
 from commands.source_commands import SourceProcessingInput
-from open_notebook.database.repository import repo_query
+from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.batch import BatchSourceRelationship, BatchUpload
 from open_notebook.domain.notebook import Source
 
@@ -47,7 +47,7 @@ async def process_batch_upload_command(
         # Get all pending sources for this batch
         relationships_data = await repo_query(
             "SELECT * FROM batch_source_relationship WHERE batch_id = $batch_id AND status = 'pending'",
-            {"batch_id": input_data.batch_id},
+            {"batch_id": ensure_record_id(input_data.batch_id)},
         )
         relationships = [BatchSourceRelationship(**data) for data in relationships_data]
 

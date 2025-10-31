@@ -1,10 +1,15 @@
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
 from loguru import logger
+from pydantic import BaseModel
 
-from api.models import NotebookCreate, NotebookResponse, NotebookUpdate, BulkSourceOperationRequest
+from api.models import (
+    BulkSourceOperationRequest,
+    NotebookCreate,
+    NotebookResponse,
+    NotebookUpdate,
+)
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
 from open_notebook.exceptions import InvalidInputError

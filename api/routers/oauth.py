@@ -3,17 +3,17 @@ OAuth API endpoints for secure third-party service integrations with comprehensi
 authentication flow management and error handling.
 """
 
-from typing import Dict, List, Optional, Any
-from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Query, Depends, Request
+import os
+import secrets
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from loguru import logger
-import secrets
-import os
-
-from api.services.oauth_service import oauth_service, OAuthState
 from pydantic import BaseModel, Field
 
+from api.services.oauth_service import OAuthState, oauth_service
 
 router = APIRouter(prefix="/api/oauth", tags=["oauth"])
 
@@ -28,33 +28,23 @@ async def get_current_user(request: Request) -> Dict[str, str]:
     # Check if password auth is enabled
     password_enabled = bool(os.environ.get("OPEN_NOTEBOOK_PASSWORD"))
 
-    if password_enabled:
-        # For password-protected instances, use session-based identification
-        if "user_id" not in request.session:
-            # Create a unique user ID for this session
-            request.session["user_id"] = f"session-{secrets.token_urlsafe(16)}"
-            request.session["created_at"] = datetime.now(timezone.utc).isoformat()
+    session_key = "user_id" if password_enabled else "anon_user_id"
 
-        return {
-            "id": request.session["user_id"],
-            "username": f"user-{request.session['user_id'][:8]}",
-            "authenticated": True
-        }
-    else:
-        # For non-password instances, create a consistent anonymous user
-        # This allows OAuth to work while maintaining isolation
-        client_ip = request.client.host if request.client else "unknown"
-        user_agent = request.headers.get("user-agent", "")
+    if session_key not in request.session:
+        suffix = secrets.token_urlsafe(16)
+        request.session[session_key] = (
+            f"session-{suffix}" if password_enabled else f"anon-{suffix}"
+        )
+        request.session.setdefault(
+            "created_at", datetime.now(timezone.utc).isoformat()
+        )
 
-        # Create a consistent but anonymous identifier
-        import hashlib
-        identifier = f"{client_ip}:{hashlib.sha256(user_agent.encode()).hexdigest()[:16]}"
-
-        return {
-            "id": f"anon-{hashlib.sha256(identifier.encode()).hexdigest()[:16]}",
-            "username": "anonymous",
-            "authenticated": False
-        }
+    user_id = request.session[session_key]
+    return {
+        "id": user_id,
+        "username": f"user-{user_id[:8]}" if password_enabled else "anonymous",
+        "authenticated": password_enabled,
+    }
 
 
 # Request/Response Models
@@ -129,10 +119,12 @@ async def initiate_oauth_authorization(
 
         logger.info(f"Initiated OAuth authorization for {request.provider} user {user_id}")
 
+        expires_at = oauth_state.expires_at or (datetime.now(timezone.utc) + timedelta(minutes=10))
+
         return OAuthAuthorizeResponse(
             authorization_url=auth_url,
             state=state,
-            expires_at=oauth_state.expires_at
+            expires_at=expires_at,
         )
 
     except HTTPException:

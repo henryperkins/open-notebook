@@ -144,7 +144,13 @@ async def ask_knowledge_base(ask_request: AskRequest):
             stream_ask_response(
                 ask_request.question, strategy_model, answer_model, final_answer_model
             ),
-            media_type="text/plain",
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Cache-Control"
+            }
         )
 
     except HTTPException:

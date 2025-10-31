@@ -5,7 +5,7 @@ Extracted from main utils to avoid circular imports.
 
 import re
 import unicodedata
-from typing import Tuple
+from typing import Any, Tuple
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -73,7 +73,7 @@ def remove_non_printable(text: str) -> str:
     return re.sub(r"[^\w\s.,!?\-\n\t]", "", text, flags=re.UNICODE)
 
 
-def parse_thinking_content(content: str) -> Tuple[str, str]:
+def parse_thinking_content(content: Any) -> Tuple[str, str]:
     """
     Parse message content to extract thinking content from <think> tags.
 

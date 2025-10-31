@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional, cast
 
 from fastapi import (
     APIRouter,
@@ -151,15 +151,29 @@ async def create_batch_sources(
         await batch_upload.save()
         raise HTTPException(status_code=500, detail=f"Failed to queue batch processing: {str(e)}")
 
+    # Calculate total size from uploaded files
+    total_size = sum(getattr(source, 'file_size', 0) for source in created_sources)
+
+    status_literal = cast(
+        Literal[
+            "initializing",
+            "uploading",
+            "validating",
+            "processing",
+            "completed",
+            "failed",
+            "cancelled",
+            "paused",
+        ],
+        batch_upload.status,
+    )
+
     return BatchUploadResponse(
-        id=str(batch_upload.id),
-        name=batch_upload.name,
-        status=batch_upload.status,
+        batch_id=str(batch_upload.id),
+        status=status_literal,
         total_files=batch_upload.total_files,
-        processed_files=batch_upload.processed_files,
-        failed_files=batch_upload.failed_files,
-        created_at=str(batch_upload.created),
-        updated_at=str(batch_upload.updated),
+        total_size=total_size,
+        message=f"Batch upload created with {batch_upload.total_files} files. Processing started."
     )
 
 

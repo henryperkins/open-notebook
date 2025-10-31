@@ -11,12 +11,17 @@ import { useToast } from '@/lib/hooks/use-toast'
 
 import { apiClient } from '@/lib/api/client'
 
-// Types
-interface BatchUploadInitRequest {
-  notebook_ids?: string[]
-  priority: 'low' | 'normal' | 'high' | 'urgent'
-  config_override?: Record<string, any>
+const getErrorDetail = (error: { response?: { data?: { detail?: string } }; message?: string }, fallback: string) => {
+  if (error?.response?.data?.detail) {
+    return error.response.data.detail
+  }
+  if (error?.message) {
+    return error.message
+  }
+  return fallback
 }
+
+// Types
 
 interface BatchUploadResponse {
   batch_id: string
@@ -56,6 +61,61 @@ interface BatchUploadStatusResponse {
   created_at: string
   started_at?: string
   completed_at?: string
+}
+
+interface BatchControlResponse {
+  success: boolean
+  message: string
+  batch_id: string
+  current_status: string
+  progress_percentage: number
+}
+
+interface BatchFilesResponse {
+  batch_id: string
+  total_files: number
+  filtered_by_status?: string
+  files: {
+    file_id: string
+    original_filename: string
+    file_size: number
+    mime_type: string
+    status: string
+    error_message?: string
+    retry_count: number
+    upload_progress: number
+    processing_progress: number
+    notebook_ids: string[]
+  }[]
+}
+
+interface ActiveBatchesResponse {
+  active_batches: {
+    batch_id: string
+    status: string
+    total_files: number
+    processed_files: number
+    failed_files: number
+    progress_percentage: number
+    created_at: string
+    started_at?: string
+    estimated_time_remaining?: number
+  }[]
+  total_active: number
+}
+
+interface BatchStatsResponse {
+  user_id: string
+  statistics: {
+    total_batches: number
+    processing_batches: number
+    completed_batches: number
+    failed_batches: number
+    total_files: number
+    total_size_bytes: number
+    total_size_mb: number
+    average_batch_size: number
+  }
 }
 
 // Query keys
@@ -110,7 +170,7 @@ const batchUploadApi = {
   },
 
   // Control batch (pause, resume, cancel)
-  control: async (batchId: string, action: 'pause' | 'resume' | 'cancel'): Promise<any> => {
+  control: async (batchId: string, action: 'pause' | 'resume' | 'cancel'): Promise<BatchControlResponse> => {
     const response = await apiClient.post(`/batch-uploads/${batchId}/control`, {
       action,
     })
@@ -118,26 +178,26 @@ const batchUploadApi = {
   },
 
   // Get batch files
-  getFiles: async (batchId: string, statusFilter?: string): Promise<any> => {
+  getFiles: async (batchId: string, statusFilter?: string): Promise<BatchFilesResponse> => {
     const params = statusFilter ? { status_filter: statusFilter } : {}
     const response = await apiClient.get(`/batch-uploads/${batchId}/files`, { params })
     return response.data
   },
 
   // Get active batches
-  getActive: async (): Promise<any> => {
+  getActive: async (): Promise<ActiveBatchesResponse> => {
     const response = await apiClient.get('/batch-uploads/active')
     return response.data
   },
 
   // Get statistics
-  getStats: async (): Promise<any> => {
+  getStats: async (): Promise<BatchStatsResponse> => {
     const response = await apiClient.get('/batch-uploads/stats')
     return response.data
   },
 
   // Delete batch
-  delete: async (batchId: string, force = false): Promise<any> => {
+  delete: async (batchId: string, force = false): Promise<{ success: boolean; message: string; batch_id: string }> => {
     const response = await apiClient.delete(`/batch-uploads/${batchId}`, {
       params: { force },
     })
@@ -169,11 +229,10 @@ export function useBatchUpload() {
         description: `Started uploading ${data.total_files} files (${(data.total_size / 1024 / 1024).toFixed(1)} MB)`,
       })
     },
-    onError: (error: any) => {
-      console.error('Failed to start batch upload:', error)
+    onError: (error: { message?: string; response?: { data?: { detail?: string } } }) => {
       toast({
         title: 'Upload Failed',
-        description: error.response?.data?.detail || 'Failed to start batch upload',
+        description: getErrorDetail(error, 'Failed to start batch upload'),
         variant: 'destructive',
       })
     },
@@ -184,7 +243,7 @@ export function useBatchUpload() {
     queryKey: BATCH_UPLOAD_KEYS.status(currentBatchId || ''),
     queryFn: () => currentBatchId ? batchUploadApi.getStatus(currentBatchId) : null,
     enabled: !!currentBatchId,
-    refetchInterval: (data) => {
+    refetchInterval: (data, query) => {
       // Poll more frequently during active processing
       if (!data) return false
 
@@ -204,16 +263,17 @@ export function useBatchUpload() {
   // Control mutations
   const pauseMutation = useMutation({
     mutationFn: (batchId: string) => batchUploadApi.control(batchId, 'pause'),
-    onSuccess: () => {
+    onSuccess: (_, batchId) => {
+      queryClient.invalidateQueries({ queryKey: BATCH_UPLOAD_KEYS.status(batchId) })
       toast({
         title: 'Upload Paused',
         description: 'Batch upload has been paused',
       })
     },
-    onError: (error: any) => {
+    onError: (error: { message?: string; response?: { data?: { detail?: string } } }) => {
       toast({
         title: 'Failed to Pause',
-        description: error.response?.data?.detail || 'Failed to pause upload',
+        description: getErrorDetail(error, 'Failed to pause upload'),
         variant: 'destructive',
       })
     },
@@ -221,16 +281,17 @@ export function useBatchUpload() {
 
   const resumeMutation = useMutation({
     mutationFn: (batchId: string) => batchUploadApi.control(batchId, 'resume'),
-    onSuccess: () => {
+    onSuccess: (_, batchId) => {
+      queryClient.invalidateQueries({ queryKey: BATCH_UPLOAD_KEYS.status(batchId) })
       toast({
         title: 'Upload Resumed',
         description: 'Batch upload has been resumed',
       })
     },
-    onError: (error: any) => {
+    onError: (error: { message?: string; response?: { data?: { detail?: string } } }) => {
       toast({
         title: 'Failed to Resume',
-        description: error.response?.data?.detail || 'Failed to resume upload',
+        description: getErrorDetail(error, 'Failed to resume upload'),
         variant: 'destructive',
       })
     },
@@ -238,7 +299,9 @@ export function useBatchUpload() {
 
   const cancelMutation = useMutation({
     mutationFn: (batchId: string) => batchUploadApi.control(batchId, 'cancel'),
-    onSuccess: () => {
+    onSuccess: (_, batchId) => {
+      queryClient.invalidateQueries({ queryKey: BATCH_UPLOAD_KEYS.active() })
+      queryClient.invalidateQueries({ queryKey: BATCH_UPLOAD_KEYS.status(batchId) })
       toast({
         title: 'Upload Cancelled',
         description: 'Batch upload has been cancelled',
@@ -247,10 +310,10 @@ export function useBatchUpload() {
       // Stop polling
       stopStatusPolling()
     },
-    onError: (error: any) => {
+    onError: (error: { message?: string; response?: { data?: { detail?: string } } }) => {
       toast({
         title: 'Failed to Cancel',
-        description: error.response?.data?.detail || 'Failed to cancel upload',
+        description: getErrorDetail(error, 'Failed to cancel upload'),
         variant: 'destructive',
       })
     },
@@ -273,26 +336,16 @@ export function useBatchUpload() {
         description: 'Batch upload has been deleted',
       })
     },
-    onError: (error: any) => {
+    onError: (error: { message?: string; response?: { data?: { detail?: string } } }) => {
       toast({
         title: 'Failed to Delete',
-        description: error.response?.data?.detail || 'Failed to delete batch',
+        description: getErrorDetail(error, 'Failed to delete batch'),
         variant: 'destructive',
       })
     },
   })
 
   // Helper functions
-  const startStatusPolling = useCallback((batchId: string) => {
-    // Clear any existing polling
-    stopStatusPolling()
-
-    // Set current batch ID
-    setCurrentBatchId(batchId)
-
-    // React Query will handle the actual polling via refetchInterval
-  }, [])
-
   const stopStatusPolling = useCallback(() => {
     setCurrentBatchId(null)
 
@@ -302,6 +355,16 @@ export function useBatchUpload() {
       pollIntervalRef.current = null
     }
   }, [])
+
+  const startStatusPolling = useCallback((batchId: string) => {
+    // Clear any existing polling
+    stopStatusPolling()
+
+    // Set current batch ID
+    setCurrentBatchId(batchId)
+
+    // React Query will handle the actual polling via refetchInterval
+  }, [stopStatusPolling])
 
   const startBatchUpload = useCallback(async (data: {
     files: File[]
@@ -418,7 +481,7 @@ export function useBatchFiles(batchId: string, statusFilter?: string) {
     queryKey: BATCH_UPLOAD_KEYS.files(batchId, statusFilter),
     queryFn: () => batchUploadApi.getFiles(batchId, statusFilter),
     enabled: !!batchId,
-    refetchInterval: (data) => {
+    refetchInterval: (data, query) => {
       // Only refetch if there are active files
       if (!data?.files) return false
 

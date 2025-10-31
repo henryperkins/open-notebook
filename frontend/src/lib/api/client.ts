@@ -21,6 +21,12 @@ apiClient.interceptors.request.use(async (config) => {
   if (!config.baseURL) {
     const apiUrl = await getApiUrl()
     config.baseURL = `${apiUrl}/api`
+
+    // Enable credentials for same-origin requests to support session cookies
+    if (typeof window !== 'undefined') {
+      const isSameOrigin = apiUrl === window.location.origin
+      config.withCredentials = isSameOrigin
+    }
   }
 
   if (typeof window !== 'undefined') {

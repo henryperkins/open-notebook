@@ -35,7 +35,6 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Separator } from '@/components/ui/separator'
 import {
   Tooltip,
   TooltipContent,
@@ -48,7 +47,8 @@ import { Upload, File, X, Pause, Play, Square, AlertCircle, CheckCircle, Clock, 
 import { useBatchUpload } from '@/lib/hooks/use-batch-upload'
 import { useNotebooks } from '@/lib/hooks/use-notebooks'
 import { cn } from '@/lib/utils'
-import { formatFileSize, formatDuration, formatTimeRemaining } from '@/lib/utils/format'
+import { formatFileSize, formatTimeRemaining } from '@/lib/utils/format'
+import { NotebookResponse } from '@/lib/types/api'
 
 interface BatchUploadDialogProps {
   open: boolean
@@ -101,9 +101,8 @@ export function BatchUploadDialog({
   const [dragActive, setDragActive] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const abortControllerRef = useRef<AbortController | null>(null)
 
-  const { notebooks } = useNotebooks()
+  const notebooksQuery = useNotebooks()
   const batchUpload = useBatchUpload()
 
   // Sync notebook selection when parent dialog opens or defaults change
@@ -127,14 +126,13 @@ export function BatchUploadDialog({
   const totalSize = files.reduce((sum, file) => sum + file.file.size, 0)
   const completedFiles = files.filter(f => f.status === 'completed').length
   const failedFiles = files.filter(f => f.status === 'failed').length
-  const overallProgress = files.length > 0 ? (completedFiles / files.length) * 100 : 0
 
   // Auto-switch to progress tab when uploading starts
   useEffect(() => {
     if (batchUpload.currentBatch && batchUpload.currentBatch.status !== 'initializing') {
       setActiveTab('progress')
     }
-  }, [batchUpload.currentBatch?.status])
+  }, [batchUpload.currentBatch])
 
   // Update file statuses from batch upload hook
   useEffect(() => {
@@ -159,7 +157,7 @@ export function BatchUploadDialog({
         })
       )
     }
-  }, [batchUpload.currentBatch?.files])
+  }, [batchUpload.currentBatch])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: useCallback((acceptedFiles: File[]) => {
@@ -345,7 +343,7 @@ export function BatchUploadDialog({
                       <SelectValue placeholder="Select notebooks (optional)" />
                     </SelectTrigger>
                     <SelectContent>
-                      {notebooks?.map(notebook => (
+                      {notebooksQuery.data?.map((notebook: NotebookResponse) => (
                         <SelectItem key={notebook.id} value={notebook.id}>
                           {notebook.name}
                         </SelectItem>
@@ -356,7 +354,7 @@ export function BatchUploadDialog({
 
                 <div className="space-y-2">
                   <Label>Processing Priority</Label>
-                  <Select value={priority} onValueChange={(value: any) => setPriority(value)}>
+                  <Select value={priority} onValueChange={(value: 'low' | 'normal' | 'high' | 'urgent') => setPriority(value)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -475,7 +473,7 @@ export function BatchUploadDialog({
                       <div className="flex items-center justify-between">
                         <h3 className="font-medium">Overall Progress</h3>
                         <Badge variant="outline">
-                          {PRIORITY_CONFIG[batchUpload.currentBatch.priority || 'normal'].label} Priority
+                          Normal Priority
                         </Badge>
                       </div>
 

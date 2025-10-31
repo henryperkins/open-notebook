@@ -16,6 +16,7 @@ from api.routers import (
     embedding,
     embedding_rebuild,
     episode_profiles,
+    google_drive,
     insights,
     models,
     notebooks,
@@ -28,7 +29,6 @@ from api.routers import (
     sources,
     speaker_profiles,
     transformations,
-    google_drive,
 )
 from api.routers import commands as commands_router
 from open_notebook.database.async_migrate import AsyncMigrationManager

@@ -19,8 +19,26 @@ import { useDeleteSource, useRetrySource, useRemoveSourceFromNotebook } from '@/
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { BulkSourceActionDialog } from '@/components/notebooks/BulkSourceActionDialog'
+import { SourceListResponse } from '@/lib/types/api'
+import { ContextMode } from '../[id]/page'
 
-export function SourcesColumn({ sources, isLoading, notebookId, onRefresh, contextSelections, onContextModeChange }) {
+interface SourcesColumnProps {
+  sources: SourceListResponse[]
+  isLoading: boolean
+  notebookId: string
+  onRefresh: () => void
+  contextSelections: Record<string, ContextMode>
+  onContextModeChange: (sourceId: string, mode: ContextMode) => void
+}
+
+export function SourcesColumn({
+  sources,
+  isLoading,
+  notebookId,
+  onRefresh,
+  contextSelections,
+  onContextModeChange
+}: SourcesColumnProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [addExistingDialogOpen, setAddExistingDialogOpen] = useState(false)
@@ -36,7 +54,7 @@ export function SourcesColumn({ sources, isLoading, notebookId, onRefresh, conte
   const retrySource = useRetrySource()
   const removeFromNotebook = useRemoveSourceFromNotebook()
   
-  const handleDeleteClick = (sourceId) => {
+  const handleDeleteClick = (sourceId: string) => {
     setSourceToDelete(sourceId)
     setDeleteDialogOpen(true)
   }
@@ -54,7 +72,7 @@ export function SourcesColumn({ sources, isLoading, notebookId, onRefresh, conte
     }
   }
 
-  const handleRemoveFromNotebook = (sourceId) => {
+  const handleRemoveFromNotebook = (sourceId: string) => {
     setSourceToRemove(sourceId)
     setRemoveDialogOpen(true)
   }
@@ -75,7 +93,7 @@ export function SourcesColumn({ sources, isLoading, notebookId, onRefresh, conte
     }
   }
 
-  const handleRetry = async (sourceId) => {
+  const handleRetry = async (sourceId: string) => {
     try {
       await retrySource.mutateAsync(sourceId)
     } catch (error) {
@@ -83,7 +101,7 @@ export function SourcesColumn({ sources, isLoading, notebookId, onRefresh, conte
     }
   }
 
-  const handleSourceClick = (sourceId) => {
+  const handleSourceClick = (sourceId: string) => {
     openModal('source', sourceId)
   }
   
