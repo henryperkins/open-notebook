@@ -8,6 +8,9 @@ import { CheckCircle, Sparkles, Lightbulb, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { convertReferencesToMarkdownLinks, createReferenceLinkComponent } from '@/lib/utils/source-references'
+import { getProseStyle } from '@/lib/utils/prose-styles'
+import { useStreamingEnrichedReferences } from '@/lib/hooks/use-enriched-references'
+import { EnrichedReferencesList } from '@/components/common/EnrichedReferencesList'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { toast } from 'sonner'
 
@@ -139,6 +142,7 @@ export function StreamingResponse({
             <FinalAnswerContent
               content={finalAnswer}
               onReferenceClick={handleReferenceClick}
+              isStreaming={isStreaming}
             />
           </CardContent>
         </Card>
@@ -155,29 +159,63 @@ export function StreamingResponse({
   )
 }
 
-// Helper component to render final answer with clickable references
+// Helper component to render final answer with clickable references and enriched titles
 function FinalAnswerContent({
   content,
-  onReferenceClick
+  onReferenceClick,
+  isStreaming
 }: {
   content: string
   onReferenceClick: (type: string, id: string) => void
+  isStreaming: boolean
 }) {
-  // Convert references to markdown links
-  const markdownWithLinks = convertReferencesToMarkdownLinks(content)
-
-  // Create custom link component
-  const LinkComponent = createReferenceLinkComponent(onReferenceClick)
+  // Use the enriched references hook
+  const {
+    processedText,
+    enrichedData,
+    isLoading,
+    error,
+    LinkComponent,
+    refreshMetadata,
+    hasReferences
+  } = useStreamingEnrichedReferences(content, isStreaming, {
+    enableAugmentation: true,
+    onReferenceClick,
+    showToastOnError: false // Don't show toast for streaming errors
+  })
 
   return (
-    <div className="prose prose-sm max-w-none dark:prose-invert break-words prose-a:break-all prose-p:leading-relaxed prose-headings:mt-4 prose-headings:mb-2">
-      <ReactMarkdown
-        components={{
-          a: LinkComponent
-        }}
-      >
-        {markdownWithLinks}
-      </ReactMarkdown>
+    <div className="space-y-4">
+      {/* Main content */}
+      <div className={getProseStyle('streaming')}>
+        <ReactMarkdown
+          components={{
+            a: LinkComponent
+          }}
+        >
+          {processedText}
+        </ReactMarkdown>
+      </div>
+
+      {/* Enhanced references list */}
+      {hasReferences && (
+        <div className="border-t pt-4">
+          {isStreaming ? (
+            <div className="text-sm text-muted-foreground">
+              References will appear when streaming completes...
+            </div>
+          ) : (
+            <EnrichedReferencesList
+              references={enrichedData || []}
+              isLoading={isLoading}
+              error={error}
+              onReferenceClick={onReferenceClick}
+              onRefresh={refreshMetadata}
+              compact={false}
+            />
+          )}
+        </div>
+      )}
     </div>
   )
 }

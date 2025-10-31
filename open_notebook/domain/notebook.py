@@ -1,4 +1,6 @@
 import asyncio
+import os
+import random
 from typing import Any, ClassVar, Dict, List, Literal, Optional, Tuple, Union
 
 from loguru import logger
@@ -10,6 +12,57 @@ from open_notebook.domain.base import ObjectModel
 from open_notebook.domain.models import model_manager
 from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
 from open_notebook.utils import split_text
+
+
+def _vector_config_int(name: str, default: int, minimum: int = 1) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+        if value < minimum:
+            raise ValueError
+        return value
+    except ValueError:
+        logger.warning(f"Invalid value for {name}={raw!r}; using {default}.")
+        return default
+
+
+def _vector_config_float(name: str, default: float, minimum: float = 0.0) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+        if value < minimum:
+            raise ValueError
+        return value
+    except ValueError:
+        logger.warning(f"Invalid value for {name}={raw!r}; using {default}.")
+        return default
+
+
+_VECTORIZE_MAX_CONCURRENCY = _vector_config_int("SOURCE_VECTORIZE_MAX_CONCURRENCY", 4)
+_VECTORIZE_MAX_RETRIES = _vector_config_int("SOURCE_VECTORIZE_MAX_RETRIES", 3)
+_VECTORIZE_RETRY_BASE_DELAY = _vector_config_float(
+    "SOURCE_VECTORIZE_RETRY_BASE_DELAY", 0.2
+)
+_VECTORIZE_RETRY_MAX_DELAY = _vector_config_float(
+    "SOURCE_VECTORIZE_RETRY_MAX_DELAY", 2.0, minimum=_VECTORIZE_RETRY_BASE_DELAY
+)
+_CHUNK_CONCURRENCY = _vector_config_int("SOURCE_VECTORIZE_CHUNK_CONCURRENCY", 8)
+
+_VECTORIZE_SEMAPHORE = asyncio.Semaphore(_VECTORIZE_MAX_CONCURRENCY)
+_CHUNK_SEMAPHORE = asyncio.Semaphore(_CHUNK_CONCURRENCY)
+
+
+def _vectorize_retry_delay(attempt: int) -> float:
+    backoff = min(
+        _VECTORIZE_RETRY_BASE_DELAY * (2 ** (attempt - 1)),
+        _VECTORIZE_RETRY_MAX_DELAY,
+    )
+    jitter = random.uniform(0, _VECTORIZE_RETRY_BASE_DELAY)
+    return backoff + jitter
 
 
 class Notebook(ObjectModel):
@@ -199,7 +252,9 @@ class Source(ObjectModel):
 
             # Extract execution metadata if available
             result = getattr(status_result, "result", None)
-            execution_metadata = result.get("execution_metadata", {}) if isinstance(result, dict) else {}
+            execution_metadata = (
+                result.get("execution_metadata", {}) if isinstance(result, dict) else {}
+            )
 
             return {
                 "status": status_result.status,
@@ -263,110 +318,125 @@ class Source(ObjectModel):
         return await self.relate("reference", notebook_id)
 
     async def vectorize(self) -> None:
-        logger.info(f"Starting vectorization for source {self.id}")
-        EMBEDDING_MODEL = await model_manager.get_embedding_model()
+        async with _VECTORIZE_SEMAPHORE:
+            logger.info(f"Starting vectorization for source {self.id}")
+            EMBEDDING_MODEL = await model_manager.get_embedding_model()
 
-        if not self.full_text:
-            logger.warning(f"No text to vectorize for source {self.id}")
-            return
+            if not self.full_text:
+                logger.warning(f"No text to vectorize for source {self.id}")
+                return
 
-        chunks = split_text(self.full_text)
-        chunk_count = len(chunks)
-        logger.info(f"Split into {chunk_count} chunks for source {self.id}")
+            chunks = split_text(self.full_text)
+            chunk_count = len(chunks)
+            logger.info(f"Split into {chunk_count} chunks for source {self.id}")
 
-        if chunk_count == 0:
-            logger.warning("No chunks created after splitting")
-            return
+            if chunk_count == 0:
+                logger.warning("No chunks created after splitting")
+                return
 
-        try:
-            # Process chunks concurrently using async gather with error resilience
-            logger.info("Starting concurrent processing of chunks")
+            try:
+                logger.info("Starting concurrent processing of chunks")
 
-            async def process_chunk(
-                idx: int, chunk: str
-            ) -> Tuple[int, List[float], str]:
-                logger.debug(f"Processing chunk {idx}/{chunk_count}")
-                try:
-                    if EMBEDDING_MODEL is None:
-                        raise ValueError("EMBEDDING_MODEL is not configured")
-                    embedding = (await EMBEDDING_MODEL.aembed([chunk]))[0]
-                    cleaned_content = chunk
-                    logger.debug(f"Successfully processed chunk {idx}")
-                    return (idx, embedding, cleaned_content)
-                except Exception as e:
-                    logger.error(f"Error processing chunk {idx}: {str(e)}")
-                    raise
+                async def process_chunk(
+                    idx: int, chunk: str
+                ) -> Tuple[int, List[float], str]:
+                    logger.debug(f"Processing chunk {idx}/{chunk_count}")
+                    attempt = 1
+                    while True:
+                        try:
+                            async with _CHUNK_SEMAPHORE:
+                                if EMBEDDING_MODEL is None:
+                                    raise ValueError(
+                                        "EMBEDDING_MODEL is not configured"
+                                    )
+                                embedding = (await EMBEDDING_MODEL.aembed([chunk]))[0]
+                            cleaned_content = chunk
+                            logger.debug(f"Successfully processed chunk {idx}")
+                            return (idx, embedding, cleaned_content)
+                        except Exception as exc:
+                            if isinstance(exc, asyncio.CancelledError):
+                                raise
+                            if attempt >= _VECTORIZE_MAX_RETRIES:
+                                logger.error(
+                                    f"Chunk {idx} failed after {attempt} attempts: {exc}"
+                                )
+                                raise
+                            delay = _vectorize_retry_delay(attempt)
+                            logger.warning(
+                                f"Chunk {idx} retrying after {delay:.2f}s "
+                                f"(attempt {attempt}/{_VECTORIZE_MAX_RETRIES}). Error: {exc}"
+                            )
+                            await asyncio.sleep(delay)
+                            attempt += 1
 
-            # Create tasks for all chunks and process them concurrently with return_exceptions=True
-            tasks = [process_chunk(idx, chunk) for idx, chunk in enumerate(chunks)]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+                tasks = [process_chunk(idx, chunk) for idx, chunk in enumerate(chunks)]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # Check for processing errors before proceeding
-            failed_chunks = []
-            successful_results = []
+                failed_chunks: List[int] = []
+                successful_results: List[Tuple[int, List[float], str]] = []
 
-            for i, result in enumerate(results):
-                if isinstance(result, Exception):
-                    failed_chunks.append(i)
-                    logger.error(f"Chunk {i} failed to process: {result}")
-                else:
-                    successful_results.append(result)
+                for i, result in enumerate(results):
+                    if isinstance(result, Exception):
+                        failed_chunks.append(i)
+                        logger.error(f"Chunk {i} failed to process: {result}")
+                    else:
+                        successful_results.append(result)
 
-            if failed_chunks:
-                raise RuntimeError(f"Failed to process {len(failed_chunks)} chunks: {failed_chunks}")
-
-            logger.info(f"Parallel processing complete. Got {len(successful_results)} successful results")
-
-            # Atomic swap using a single database connection for the entire transaction
-            from open_notebook.database.repository import db_connection
-
-            async with db_connection() as db:
-                # Begin transaction on this connection
-                await db.query("BEGIN TRANSACTION")
-
-                try:
-                    # Delete old embeddings on the same connection
-                    delete_result = await db.query(
-                        "DELETE source_embedding WHERE source = $source_id",
-                        {"source_id": ensure_record_id(self.id)}
+                if failed_chunks:
+                    raise RuntimeError(
+                        f"Failed to process {len(failed_chunks)} chunks: {failed_chunks}"
                     )
-                    deleted_count = len(delete_result) if delete_result else 0
-                    if deleted_count > 0:
-                        logger.info(f"Deleted {deleted_count} existing embeddings for source {self.id}")
 
-                    # Insert new embeddings on the same connection
-                    for idx, embedding, content in successful_results:
-                        logger.debug(f"Inserting chunk {idx} into database")
-                        await db.query(
-                            """
-                            CREATE source_embedding CONTENT {
-                                "source": $source_id,
-                                "order": $order,
-                                "content": $content,
-                                "embedding": $embedding,
-                            };""",
-                            {
-                                "source_id": ensure_record_id(self.id),
-                                "order": idx,
-                                "content": content,
-                                "embedding": embedding,
-                            },
+                logger.info(
+                    f"Parallel processing complete. Got {len(successful_results)} successful results"
+                )
+
+                from open_notebook.database.repository import db_connection
+
+                async with db_connection() as db:
+                    await db.query("BEGIN TRANSACTION")
+
+                    try:
+                        delete_result = await db.query(
+                            "DELETE source_embedding WHERE source = $source_id",
+                            {"source_id": ensure_record_id(self.id)},
                         )
+                        deleted_count = len(delete_result) if delete_result else 0
+                        if deleted_count > 0:
+                            logger.info(
+                                f"Deleted {deleted_count} existing embeddings for source {self.id}"
+                            )
 
-                    # Commit transaction on the same connection
-                    await db.query("COMMIT")
-                    logger.info(f"Vectorization complete for source {self.id}")
+                        for idx, embedding, content in successful_results:
+                            logger.debug(f"Inserting chunk {idx} into database")
+                            await db.query(
+                                """
+                                CREATE source_embedding CONTENT {
+                                    "source": $source_id,
+                                    "order": $order,
+                                    "content": $content,
+                                    "embedding": $embedding,
+                                };""",
+                                {
+                                    "source_id": ensure_record_id(self.id),
+                                    "order": idx,
+                                    "content": content,
+                                    "embedding": embedding,
+                                },
+                            )
 
-                except Exception as e:
-                    # Rollback on the same connection
-                    await db.query("ROLLBACK")
-                    logger.error(f"Transaction rolled back due to error: {str(e)}")
-                    raise
+                        await db.query("COMMIT")
+                        logger.info(f"Vectorization complete for source {self.id}")
 
-        except Exception as e:
-            logger.error(f"Error vectorizing source {self.id}: {str(e)}")
-            logger.exception(e)
-            raise DatabaseOperationError(e)
+                    except Exception as e:
+                        await db.query("ROLLBACK")
+                        logger.error(f"Transaction rolled back due to error: {str(e)}")
+                        raise
+
+            except Exception as e:
+                logger.error(f"Error vectorizing source {self.id}: {str(e)}")
+                logger.exception(e)
+                raise DatabaseOperationError(e)
 
     async def add_insight(self, insight_type: str, content: str) -> Any:
         EMBEDDING_MODEL = await model_manager.get_embedding_model()

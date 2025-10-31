@@ -64,8 +64,22 @@ class ObjectModel(BaseModel):
         if not id:
             raise InvalidInputError("ID cannot be empty")
         try:
+            original_id = id
+
             # Get the table name from the ID (everything before the first colon)
-            table_name = id.split(":")[0] if ":" in id else id
+            if ":" in id:
+                table_name = id.split(":")[0]
+                corrected_id = id
+            else:
+                # Handle malformed IDs - if no colon and we have a table_name, try that class first
+                table_name = id
+                if cls.table_name:
+                    # If called from a specific class, try to prepend the table name
+                    corrected_id = f"{cls.table_name}:{id}"
+                    table_name = cls.table_name
+                else:
+                    # Can't infer table name, will try to find class matching the ID
+                    corrected_id = None
 
             # If we're calling from a specific subclass and IDs match, use that class
             if cls.table_name and cls.table_name == table_name:
@@ -76,12 +90,25 @@ class ObjectModel(BaseModel):
                 if not found_class:
                     raise InvalidInputError(f"No class found for table {table_name}")
                 target_class = cast(Type[T], found_class)
+                # If we found a class and need to correct the ID, do it
+                if corrected_id is None:
+                    corrected_id = f"{found_class.table_name}:{id}"
 
-            result = await repo_query("SELECT * FROM $id", {"id": ensure_record_id(id)})
+            # Use the corrected ID if available, otherwise use original
+            query_id = corrected_id if corrected_id else original_id
+
+            result = await repo_query("SELECT * FROM $id", {"id": ensure_record_id(query_id)})
             if result:
                 return target_class(**result[0])
             else:
-                raise NotFoundError(f"{table_name} with id {id} not found")
+                # If we tried a corrected ID and failed, try the original ID
+                if corrected_id and corrected_id != original_id:
+                    logger.warning(f"Failed to find {query_id}, trying original ID {original_id}")
+                    result = await repo_query("SELECT * FROM $id", {"id": ensure_record_id(original_id)})
+                    if result:
+                        return target_class(**result[0])
+
+                raise NotFoundError(f"{target_class.table_name} with id {original_id} not found")
         except Exception as e:
             logger.error(f"Error fetching object with id {id}: {str(e)}")
             logger.exception(e)

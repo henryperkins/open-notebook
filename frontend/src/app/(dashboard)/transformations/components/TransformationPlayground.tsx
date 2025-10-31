@@ -12,6 +12,7 @@ import { Transformation } from '@/lib/types/transformations'
 import { useExecuteTransformation } from '@/lib/hooks/use-transformations'
 import { ModelSelector } from '@/components/common/ModelSelector'
 import ReactMarkdown from 'react-markdown'
+import { getProseStyle } from '@/lib/utils/prose-styles'
 
 interface TransformationPlaygroundProps {
   transformations: Transformation[] | undefined
@@ -118,7 +119,7 @@ export function TransformationPlayground({ transformations, selectedTransformati
               <Card>
                 <ScrollArea className="h-[400px]">
                   <CardContent className="pt-6">
-                    <div className="prose prose-sm max-w-none">
+                    <div className={getProseStyle('document')}>
                       <ReactMarkdown>{output}</ReactMarkdown>
                     </div>
                   </CardContent>

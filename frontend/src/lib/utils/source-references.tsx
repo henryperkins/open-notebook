@@ -282,8 +282,8 @@ export function createReferenceLinkComponent(
       // Select appropriate icon based on reference type
       const IconComponent =
         type === 'source' ? FileText :
-        type === 'source_insight' ? Lightbulb :
-        FileEdit // note
+          type === 'source_insight' ? Lightbulb :
+            FileEdit // note
 
       return (
         <button
@@ -318,20 +318,20 @@ export function createReferenceLinkComponent(
  *
  * This function transforms verbose inline references like [source:abc123] into
  * compact numbered citations [1], [2], etc., and appends a "References:" section
- * at the bottom of the message with the full reference details.
+ * at the bottom of the message with user-friendly labels and full reference details.
  *
  * Algorithm:
  * 1. Parse all references using parseSourceReferences()
  * 2. Build a reference map to deduplicate and assign numbers
  * 3. Replace inline references with numbered citations
- * 4. Append reference list at the bottom
+ * 4. Append reference list at the bottom with user-friendly type labels
  *
  * @param text - Original text with references
  * @returns Text with numbered citations and reference list appended
  *
  * @example
  * Input: "See [source:abc] and [note:xyz]. Also [source:abc] again."
- * Output: "See [1] and [2]. Also [1] again.\n\nReferences:\n[1] - [source:abc]\n[2] - [note:xyz]"
+ * Output: "See [1] and [2]. Also [1] again.\n\n**References:**\n[1] Source: abc\n[2] Note: xyz"
  */
 export function convertReferencesToCompactMarkdown(text: string): string {
   // Step 1: Parse all references using existing function
@@ -394,16 +394,25 @@ export function convertReferencesToCompactMarkdown(text: string): string {
   }
 
   // Step 5: Build reference list
-  const refListLines: string[] = ['\n\nReferences:']
+  const refListLines: string[] = ['\n\n**References:**']
+
+  // Map reference types to user-friendly labels
+  const typeLabels: Record<ReferenceType, string> = {
+    source: 'Source',
+    note: 'Note',
+    source_insight: 'Insight'
+  }
 
   // Iterate through reference map in insertion order (Map preserves order)
   for (const [, refData] of referenceMap) {
-    const refListItem = `[${refData.number}] - [${refData.type}:${refData.id}](#ref-${refData.type}-${refData.id})`
+    const typeLabel = typeLabels[refData.type] || refData.type
+    // Create clickable reference with user-friendly label and ID
+    const refListItem = `[${refData.number}] [${typeLabel}: ${refData.id}](#ref-${refData.type}-${refData.id})`
     refListLines.push(refListItem)
   }
 
   // Step 6: Append reference list to result
-  result = result + refListLines.join('\n')
+  result = result + refListLines.join('  \n')
 
   return result
 }

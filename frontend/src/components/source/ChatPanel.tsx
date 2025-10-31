@@ -19,6 +19,9 @@ import { ContextIndicator } from '@/components/common/ContextIndicator'
 import { SessionManager } from '@/components/source/SessionManager'
 import { MessageActions } from '@/components/source/MessageActions'
 import { convertReferencesToCompactMarkdown, createCompactReferenceLinkComponent } from '@/lib/utils/source-references'
+import { getProseStyle } from '@/lib/utils/prose-styles'
+import { useEnrichedReferences } from '@/lib/hooks/use-enriched-references'
+import { EnrichedReferencesList } from '@/components/common/EnrichedReferencesList'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { toast } from 'sonner'
 
@@ -318,7 +321,7 @@ export function ChatPanel({
   )
 }
 
-// Helper component to render AI messages with clickable references
+// Helper component to render AI messages with clickable references and enriched titles
 function AIMessageContent({
   content,
   onReferenceClick
@@ -326,31 +329,46 @@ function AIMessageContent({
   content: string
   onReferenceClick: (type: string, id: string) => void
 }) {
-  // Convert references to compact markdown with numbered citations
-  const markdownWithCompactRefs = convertReferencesToCompactMarkdown(content)
-
-  // Create custom link component for compact references
-  const LinkComponent = createCompactReferenceLinkComponent(onReferenceClick)
+  // Use the enriched references hook
+  const {
+    processedText,
+    enrichedData,
+    isLoading,
+    error,
+    LinkComponent,
+    refreshMetadata,
+    hasReferences,
+    isEnriched
+  } = useEnrichedReferences(content, {
+    enableAugmentation: true,
+    onReferenceClick,
+    showToastOnError: false
+  })
 
   return (
-    <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words prose-headings:font-semibold prose-a:text-blue-600 prose-a:break-all prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:mb-4 prose-p:leading-7 prose-li:mb-2">
-      <ReactMarkdown
-        components={{
-          a: LinkComponent,
-          p: ({ children }) => <p className="mb-4">{children}</p>,
-          h1: ({ children }) => <h1 className="mb-4 mt-6">{children}</h1>,
-          h2: ({ children }) => <h2 className="mb-3 mt-5">{children}</h2>,
-          h3: ({ children }) => <h3 className="mb-3 mt-4">{children}</h3>,
-          h4: ({ children }) => <h4 className="mb-2 mt-4">{children}</h4>,
-          h5: ({ children }) => <h5 className="mb-2 mt-3">{children}</h5>,
-          h6: ({ children }) => <h6 className="mb-2 mt-3">{children}</h6>,
-          li: ({ children }) => <li className="mb-1">{children}</li>,
-          ul: ({ children }) => <ul className="mb-4 space-y-1">{children}</ul>,
-          ol: ({ children }) => <ol className="mb-4 space-y-1">{children}</ol>,
-        }}
-      >
-        {markdownWithCompactRefs}
-      </ReactMarkdown>
+    <div className="space-y-3">
+      {/* Main content */}
+      <div className={getProseStyle('chat')}>
+        <ReactMarkdown
+          components={{
+            a: LinkComponent
+          }}
+        >
+          {processedText}
+        </ReactMarkdown>
+      </div>
+
+      {/* Enhanced references list (compact for chat) */}
+      {hasReferences && isEnriched && (
+        <EnrichedReferencesList
+          references={enrichedData || []}
+          isLoading={isLoading}
+          error={error}
+          onReferenceClick={onReferenceClick}
+          onRefresh={refreshMetadata}
+          compact={true} // Use compact mode for chat
+        />
+      )}
     </div>
   )
 }

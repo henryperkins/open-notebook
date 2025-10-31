@@ -25,6 +25,10 @@ echo "📊 Starting SurrealDB..."
 docker compose up -d surrealdb
 
 echo "🔧 Starting API backend..."
+# Source .env file to load environment variables
+set -a
+source .env
+set +a
 uv run run_api.py &
 API_PID=$!
 

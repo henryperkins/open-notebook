@@ -3,6 +3,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import ReactMarkdown from 'react-markdown'
+import { getProseStyle } from '@/lib/utils/prose-styles'
 import { useInsight } from '@/lib/hooks/use-insights'
 
 interface SourceInsightDialogProps {
@@ -47,7 +48,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight }: SourceInsig
               <span className="text-sm text-muted-foreground">Loading insight…</span>
             </div>
           ) : displayInsight ? (
-            <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
+            <div className={getProseStyle('source')}>
               <ReactMarkdown>{displayInsight.content}</ReactMarkdown>
             </div>
           ) : (

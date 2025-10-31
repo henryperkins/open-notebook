@@ -11,9 +11,9 @@ from surrealdb import AsyncSurreal, RecordID  # type: ignore
 T = TypeVar("T", Dict[str, Any], List[Dict[str, Any]])
 ResultT = TypeVar("ResultT")
 
-DEFAULT_MAX_RETRIES = 4
-DEFAULT_BASE_DELAY_SECONDS = 0.1
-DEFAULT_MAX_DELAY_SECONDS = 1.0
+DEFAULT_MAX_RETRIES = 8
+DEFAULT_BASE_DELAY_SECONDS = 0.2
+DEFAULT_MAX_DELAY_SECONDS = 2.0
 
 
 def _parse_int_env(name: str, default: int) -> int:
@@ -182,6 +182,7 @@ async def repo_create(table: str, data: Dict[str, Any]) -> Dict[str, Any]:
     data["created"] = datetime.now(timezone.utc)
     data["updated"] = datetime.now(timezone.utc)
     try:
+
         async def _executor(connection: AsyncSurreal) -> Dict[str, Any]:
             return parse_record_ids(await connection.insert(table, data))
 
@@ -259,6 +260,7 @@ async def repo_delete(record_id: Union[str, RecordID]):
     """Delete a record by record id"""
 
     try:
+
         async def _executor(connection: AsyncSurreal):
             return await connection.delete(ensure_record_id(record_id))
 
@@ -273,6 +275,7 @@ async def repo_insert(
 ) -> List[Dict[str, Any]]:
     """Create a new record in the specified table"""
     try:
+
         async def _executor(connection: AsyncSurreal) -> List[Dict[str, Any]]:
             return parse_record_ids(await connection.insert(table, data))
 

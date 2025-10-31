@@ -77,6 +77,11 @@ await repo_query("SELECT * FROM table WHERE field = $value", {"value": "example"
 await repo_update("table", record_id, data)
 ```
 
+### SurrealDB Contention Tuning
+- Environment defaults increase Surreal retry attempts to 8 with 0.2s base delay (max 2s). Override via `SURREAL_MAX_RETRIES`, `SURREAL_RETRY_BASE_DELAY`, and `SURREAL_RETRY_MAX_DELAY` when running large ingest jobs.
+- Vectorization runs inside an async semaphore (`SOURCE_VECTORIZE_MAX_CONCURRENCY`, default 4) and each chunk retries with exponential backoff using `SOURCE_VECTORIZE_MAX_RETRIES`, `SOURCE_VECTORIZE_RETRY_BASE_DELAY`, `SOURCE_VECTORIZE_RETRY_MAX_DELAY`, and `SOURCE_VECTORIZE_CHUNK_CONCURRENCY`.
+- Tune these variables per environment to balance throughput and database write contention; higher values favor reliability when SurrealDB indexes contend, while lower concurrency shortens queueing for latency-sensitive workloads.
+
 ### AI Integration
 Multi-provider AI support via the Esperanto library:
 
