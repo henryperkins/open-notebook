@@ -106,7 +106,7 @@ export function BulkSourceActionDialog({
   const handleConfirm = async () => {
     const selectedSourceIds = Object.entries(selectedSources)
       .filter(([, isSelected]) => isSelected)
-      .map(([sourceId, _]) => sourceId)
+      .map(([sourceId]) => sourceId)
 
     if (selectedSourceIds.length === 0) {
       return

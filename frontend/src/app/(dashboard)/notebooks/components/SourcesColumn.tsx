@@ -43,9 +43,9 @@ export function SourcesColumn({
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [addExistingDialogOpen, setAddExistingDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [sourceToDelete, setSourceToDelete] = useState(null)
+  const [sourceToDelete, setSourceToDelete] = useState<string | null>(null)
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
-  const [sourceToRemove, setSourceToRemove] = useState(null)
+  const [sourceToRemove, setSourceToRemove] = useState<string | null>(null)
   const [bulkAddDialogOpen, setBulkAddDialogOpen] = useState(false)
   const [bulkRemoveDialogOpen, setBulkRemoveDialogOpen] = useState(false)
 

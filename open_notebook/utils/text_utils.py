@@ -8,9 +8,8 @@ import re
 import unicodedata
 from typing import Any, List, Optional, Tuple
 
-from loguru import logger
-
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from loguru import logger
 
 from .token_utils import token_count
 

@@ -8,7 +8,7 @@ from open_notebook.exceptions import InvalidInputError
 
 async def get_configured_embedding_dimension() -> Optional[int]:
     """Return the configured embedding dimension from workspace settings."""
-    settings = await ContentSettings.get_instance()
+    settings: ContentSettings = await ContentSettings.get_instance()  # type: ignore[assignment]
     return settings.embedding_dimension
 
 

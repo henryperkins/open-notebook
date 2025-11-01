@@ -332,9 +332,7 @@ class RecordModel(BaseModel):
         }
 
         await repo_upsert(
-            self.__class__.table_name
-            if hasattr(self.__class__, "table_name")
-            else "record",
+            getattr(self.__class__, "table_name", "record"),
             self.record_id,
             data,
         )

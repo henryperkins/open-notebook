@@ -249,7 +249,7 @@ export function useBatchUpload() {
     queryKey: BATCH_UPLOAD_KEYS.status(currentBatchId || ''),
     queryFn: () => currentBatchId ? batchUploadApi.getStatus(currentBatchId) : null,
     enabled: !!currentBatchId,
-    refetchInterval: (data, query) => {
+    refetchInterval: (data, _query) => {
       // Poll more frequently during active processing
       if (!data) return false
 
@@ -497,7 +497,7 @@ export function useBatchFiles(batchId: string, statusFilter?: string) {
     queryKey: BATCH_UPLOAD_KEYS.files(batchId, statusFilter),
     queryFn: () => batchUploadApi.getFiles(batchId, statusFilter),
     enabled: !!batchId,
-    refetchInterval: (data, query) => {
+    refetchInterval: (data, _query) => {
       // Only refetch if there are active files
       if (!data?.files) return false
 

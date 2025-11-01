@@ -1,7 +1,7 @@
 from typing import ClassVar, List, Optional
 
 from loguru import logger
-from podcastfy.client import generate_podcast
+from podcastfy.client import generate_podcast  # type: ignore
 from pydantic import Field, field_validator, model_validator
 
 from open_notebook.config import DATA_FOLDER

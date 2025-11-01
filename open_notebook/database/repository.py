@@ -84,7 +84,7 @@ def _retry_delay_seconds(attempt: int) -> float:
 
 
 async def _execute_with_retry(
-    operation_name: str, executor: Callable[[AsyncSurreal], Awaitable[ResultT]]
+    operation_name: str, executor: Callable[[Any], Awaitable[ResultT]]
 ) -> ResultT:
     attempt = 1
     while True:
@@ -147,9 +147,9 @@ async def db_connection():
             "password": get_database_password(),
         }
     )
-    await db.use(
-        os.environ.get("SURREAL_NAMESPACE"), os.environ.get("SURREAL_DATABASE")
-    )
+    namespace = os.environ.get("SURREAL_NAMESPACE") or "open_notebook"
+    database = os.environ.get("SURREAL_DATABASE") or "production"
+    await db.use(namespace, database)
     try:
         yield db
     finally:
@@ -161,7 +161,7 @@ async def repo_query(
 ) -> List[Dict[str, Any]]:
     """Execute a SurrealQL query and return the results"""
 
-    async def _executor(connection: AsyncSurreal) -> List[Dict[str, Any]]:
+    async def _executor(connection: Any) -> List[Dict[str, Any]]:
         result = parse_record_ids(await connection.query(query_str, vars))
         if isinstance(result, str):
             raise RuntimeError(result)
@@ -183,7 +183,7 @@ async def repo_create(table: str, data: Dict[str, Any]) -> Dict[str, Any]:
     data["updated"] = datetime.now(timezone.utc)
     try:
 
-        async def _executor(connection: AsyncSurreal) -> Dict[str, Any]:
+        async def _executor(connection: Any) -> Dict[str, Any]:
             return parse_record_ids(await connection.insert(table, data))
 
         return await _execute_with_retry("repo_create", _executor)
@@ -261,7 +261,7 @@ async def repo_delete(record_id: Union[str, RecordID]):
 
     try:
 
-        async def _executor(connection: AsyncSurreal):
+        async def _executor(connection: Any):
             return await connection.delete(ensure_record_id(record_id))
 
         return await _execute_with_retry("repo_delete", _executor)
@@ -276,7 +276,7 @@ async def repo_insert(
     """Create a new record in the specified table"""
     try:
 
-        async def _executor(connection: AsyncSurreal) -> List[Dict[str, Any]]:
+        async def _executor(connection: Any) -> List[Dict[str, Any]]:
             return parse_record_ids(await connection.insert(table, data))
 
         return await _execute_with_retry("repo_insert", _executor)

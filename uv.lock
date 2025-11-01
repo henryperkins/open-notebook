@@ -2441,6 +2441,7 @@ dependencies = [
     { name = "surrealdb" },
     { name = "tiktoken" },
     { name = "tomli" },
+    { name = "typer" },
     { name = "uvicorn" },
 ]
 
@@ -2503,6 +2504,7 @@ requires-dist = [
     { name = "surrealdb", specifier = ">=1.0.4" },
     { name = "tiktoken", specifier = ">=0.8.0" },
     { name = "tomli", specifier = ">=2.0.2" },
+    { name = "typer", specifier = ">=0.12.3" },
     { name = "types-requests", marker = "extra == 'dev'", specifier = ">=2.32.0.20241016" },
     { name = "uvicorn", specifier = ">=0.24.0" },
 ]

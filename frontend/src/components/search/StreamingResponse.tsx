@@ -7,7 +7,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { CheckCircle, Sparkles, Lightbulb, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { convertReferencesToMarkdownLinks, createReferenceLinkComponent } from '@/lib/utils/source-references'
 import { getProseStyle } from '@/lib/utils/prose-styles'
 import { useStreamingEnrichedReferences } from '@/lib/hooks/use-enriched-references'
 import { EnrichedReferencesList } from '@/components/common/EnrichedReferencesList'

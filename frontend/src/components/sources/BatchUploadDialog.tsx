@@ -127,22 +127,21 @@ export function BatchUploadDialog({
 
   // Calculate batch statistics
   const totalSize = files.reduce((sum, file) => sum + file.file.size, 0)
-  const completedFiles = files.filter(f => f.status === 'completed').length
   const failedFiles = files.filter(f => f.status === 'failed').length
 
   // Auto-switch to progress tab when uploading starts
   useEffect(() => {
-    if (batchUpload.currentBatch && batchUpload.currentBatch.status !== 'initializing') {
+    if (batchUpload.currentBatch && (batchUpload.currentBatch as any).status !== 'initializing') {
       setActiveTab('progress')
     }
   }, [batchUpload.currentBatch])
 
   // Update file statuses from batch upload hook
   useEffect(() => {
-    if (batchUpload.currentBatch?.files) {
+    if ((batchUpload.currentBatch as any)?.files) {
       setFiles(prevFiles =>
         prevFiles.map(fileItem => {
-          const batchFile = batchUpload.currentBatch!.files.find(
+          const batchFile = (batchUpload.currentBatch as any).files.find(
             bf => bf.original_filename === fileItem.file.name
           )
 
@@ -161,6 +160,34 @@ export function BatchUploadDialog({
       )
     }
   }, [batchUpload.currentBatch])
+
+  // Initialize embed enabled state based on settings
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    if (!settings) {
+      setEmbedEnabled((prev) => (prev === null ? false : prev))
+      return
+    }
+    setEmbedEnabled((prev) => {
+      if (prev !== null) {
+        return prev
+      }
+      const option = settings.default_embedding_option
+      if (!option) {
+        return false
+      }
+      return option === 'always' || option === 'ask'
+    })
+  }, [open, settings])
+
+  // Reset embed enabled state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setEmbedEnabled(null)
+    }
+  }, [open])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: useCallback((acceptedFiles: File[]) => {
@@ -693,28 +720,3 @@ export function BatchUploadDialog({
     </Dialog>
   )
 }
-  useEffect(() => {
-    if (!open) {
-      return
-    }
-    if (!settings) {
-      setEmbedEnabled((prev) => (prev === null ? false : prev))
-      return
-    }
-    setEmbedEnabled((prev) => {
-      if (prev !== null) {
-        return prev
-      }
-      const option = settings.default_embedding_option
-      if (!option) {
-        return false
-      }
-      return option === 'always' || option === 'ask'
-    })
-  }, [open, settings])
-
-  useEffect(() => {
-    if (!open) {
-      setEmbedEnabled(null)
-    }
-  }, [open])
