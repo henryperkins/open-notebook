@@ -18,6 +18,7 @@ export function useSourceChat(sourceId: string) {
   const [messages, setMessages] = useState<SourceChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [contextIndicators, setContextIndicators] = useState<SourceChatContextIndicator | null>(null)
+  const [modelOverride, setModelOverride] = useState<string | undefined>()
   const abortControllerRef = useRef<AbortController | null>(null)
 
   // Fetch sessions
@@ -40,6 +41,11 @@ export function useSourceChat(sourceId: string) {
       setMessages(currentSession.messages)
     }
   }, [currentSession])
+
+  // Sync model override with current session
+  useEffect(() => {
+    setModelOverride(currentSession?.model_override ?? undefined)
+  }, [currentSession?.model_override, currentSession?.id])
 
   // Auto-select most recent session when sessions are loaded
   useEffect(() => {
@@ -103,7 +109,10 @@ export function useSourceChat(sourceId: string) {
     if (!sessionId) {
       try {
         const defaultTitle = message.length > 30 ? `${message.substring(0, 30)}...` : message
-        const newSession = await sourceChatApi.createSession(sourceId, { title: defaultTitle })
+        const newSession = await sourceChatApi.createSession(sourceId, {
+          title: defaultTitle,
+          model_override: modelOverride
+        })
         sessionId = newSession.id
         setCurrentSessionId(sessionId)
         queryClient.invalidateQueries({ queryKey: ['sourceChatSessions', sourceId] })
@@ -221,6 +230,124 @@ export function useSourceChat(sourceId: string) {
     return deleteSessionMutation.mutate(sessionId)
   }, [deleteSessionMutation])
 
+  // Change model override
+  const changeModel = useCallback((model?: string) => {
+    setModelOverride(model)
+    if (currentSessionId) {
+      updateSessionMutation.mutate({
+        sessionId: currentSessionId,
+        data: { model_override: model ?? null }
+      })
+    }
+  }, [currentSessionId, updateSessionMutation])
+
+  // Regenerate last AI response
+  const regenerateLastResponse = useCallback(async () => {
+    if (isStreaming || !currentSessionId) {
+      return
+    }
+
+    // Find the last AI message
+    let lastAiMessageIndex = -1
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].type === 'ai') {
+        lastAiMessageIndex = index
+        break
+      }
+    }
+    if (lastAiMessageIndex === -1) {
+      toast.error('No AI response to regenerate')
+      return
+    }
+
+    // Keep a copy of the AI message for rollback on error
+    const lastAiMessage = messages[lastAiMessageIndex]
+
+    // Remove the AI message from local state
+    setMessages(prev => prev.slice(0, lastAiMessageIndex))
+    setIsStreaming(true)
+    setContextIndicators(null)
+
+    try {
+      const response = await sourceChatApi.regenerateMessage(sourceId, currentSessionId, {
+        model_override: modelOverride
+      })
+
+      if (!response) {
+        throw new Error('No response body')
+      }
+
+      const reader = response.getReader()
+      const decoder = new TextDecoder()
+      let aiMessage: SourceChatMessage | null = null
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const text = decoder.decode(value)
+        const lines = text.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+
+              if (data.type === 'ai_message') {
+                // Create AI message on first content chunk
+                if (!aiMessage) {
+                  aiMessage = {
+                    id: `ai-${Date.now()}`,
+                    type: 'ai',
+                    content: data.content || '',
+                    timestamp: new Date().toISOString()
+                  }
+                  setMessages(prev => [...prev, aiMessage!])
+                } else {
+                  aiMessage.content += data.content || ''
+                  setMessages(prev =>
+                    prev.map(msg => msg.id === aiMessage!.id
+                      ? { ...msg, content: aiMessage!.content }
+                      : msg
+                    )
+                  )
+                }
+              } else if (data.type === 'context_indicators') {
+                setContextIndicators(data.data)
+              } else if (data.type === 'error') {
+                throw new Error(data.message || 'Stream error')
+              }
+            } catch (e) {
+              console.error('Error parsing SSE data:', e)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error regenerating response:', error)
+
+      // Handle specific error cases
+      if (error instanceof Error) {
+        if (error.message.includes('HTTP error! status: 409')) {
+          toast.error('Nothing to regenerate yet')
+        } else if (error.message.includes('HTTP error! status: 404')) {
+          toast.error('Session not found')
+        } else {
+          toast.error('Failed to regenerate response')
+        }
+      } else {
+        toast.error('Failed to regenerate response')
+      }
+
+      // Restore the AI message on error
+      setMessages(prev => [...prev, lastAiMessage])
+    } finally {
+      setIsStreaming(false)
+      // Refetch session to get persisted state
+      refetchCurrentSession()
+    }
+  }, [sourceId, currentSessionId, messages, isStreaming, modelOverride, refetchCurrentSession])
+
   return {
     // State
     sessions,
@@ -230,7 +357,8 @@ export function useSourceChat(sourceId: string) {
     isStreaming,
     contextIndicators,
     loadingSessions,
-    
+    modelOverride,
+
     // Actions
     createSession,
     updateSession,
@@ -238,6 +366,8 @@ export function useSourceChat(sourceId: string) {
     switchSession,
     sendMessage,
     cancelStreaming,
-    refetchSessions
+    refetchSessions,
+    changeModel,
+    regenerateLastResponse
   }
 }

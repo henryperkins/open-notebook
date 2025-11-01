@@ -56,6 +56,9 @@ class SendMessageRequest(BaseModel):
     message: str = Field(..., description="User message content")
     model_override: Optional[str] = Field(None, description="Optional model override for this message")
 
+class RegenerateMessageRequest(BaseModel):
+    model_override: Optional[str] = Field(None, description="Optional model override for regeneration")
+
 class SuccessResponse(BaseModel):
     success: bool = Field(True, description="Operation success status")
     message: str = Field(..., description="Success message")
@@ -317,7 +320,7 @@ async def delete_source_chat_session(
 async def stream_source_chat_response(
     session_id: str,
     source_id: str,
-    message: str,
+    message: Optional[str] = None,
     model_override: Optional[str] = None
 ) -> AsyncGenerator[str, None]:
     """Stream the source chat response as Server-Sent Events."""
@@ -326,24 +329,25 @@ async def stream_source_chat_response(
         current_state = source_chat_graph.get_state(
             config=RunnableConfig(configurable={"thread_id": session_id})
         )
-        
+
         # Prepare state for execution
         state_values = current_state.values if current_state else {}
         state_values["messages"] = state_values.get("messages", [])
         state_values["source_id"] = source_id
         state_values["model_override"] = model_override
-        
-        # Add user message to state
-        user_message = HumanMessage(content=message)
-        state_values["messages"].append(user_message)
-        
-        # Send user message event
-        user_event = {
-            "type": "user_message",
-            "content": message,
-            "timestamp": None
-        }
-        yield f"data: {json.dumps(user_event)}\n\n"
+
+        # Add user message to state only if provided (not for regeneration)
+        if message is not None:
+            user_message = HumanMessage(content=message)
+            state_values["messages"].append(user_message)
+
+            # Send user message event
+            user_event = {
+                "type": "user_message",
+                "content": message,
+                "timestamp": None
+            }
+            yield f"data: {json.dumps(user_event)}\n\n"
         
         # Execute source chat graph synchronously (like notebook chat does)
         result = source_chat_graph.invoke(
@@ -445,3 +449,115 @@ async def send_message_to_source_chat(
     except Exception as e:
         logger.error(f"Error sending message to source chat: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error sending message: {str(e)}")
+
+
+@router.post("/sources/{source_id}/chat/sessions/{session_id}/messages/regenerate")
+async def regenerate_source_chat_message(
+    request: RegenerateMessageRequest,
+    source_id: str = Path(..., description="Source ID"),
+    session_id: str = Path(..., description="Session ID")
+):
+    """Regenerate the last AI response in a source chat session."""
+    try:
+        # Verify source exists
+        full_source_id = source_id if source_id.startswith("source:") else f"source:{source_id}"
+        source = await Source.get(full_source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        # Verify session exists and is related to source
+        full_session_id = session_id if session_id.startswith("chat_session:") else f"chat_session:{session_id}"
+        session = await ChatSession.get(full_session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        # Verify session is related to this source
+        relation_query = await repo_query(
+            "SELECT * FROM refers_to WHERE in = $session_id AND out = $source_id",
+            {"session_id": ensure_record_id(full_session_id), "source_id": ensure_record_id(full_source_id)}
+        )
+
+        if not relation_query:
+            raise HTTPException(status_code=404, detail="Session not found for this source")
+
+        # Get state history to find the checkpoint after latest user message
+        state_history = list(source_chat_graph.get_state_history(
+            config=RunnableConfig(configurable={"thread_id": session_id})
+        ))
+
+        rollback_candidates = []
+        for snapshot in state_history:
+            snapshot_values = snapshot.values or {}
+            messages = snapshot_values.get("messages") or []
+            if not messages:
+                continue
+
+            last_message = messages[-1]
+            last_message_type = getattr(last_message, "type", None)
+            if last_message_type is None and isinstance(last_message, dict):
+                last_message_type = last_message.get("type")
+
+            if last_message_type == "human":
+                metadata = getattr(snapshot, "metadata", {}) or {}
+                rollback_candidates.append((
+                    getattr(snapshot, "created_at", None),
+                    metadata.get("step"),
+                    snapshot,
+                ))
+
+        if not rollback_candidates:
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot regenerate: no previous AI response found in this session"
+            )
+
+        def _candidate_key(candidate: tuple[Optional[str], Optional[int], object]) -> tuple[str, int]:
+            created_at, step, _ = candidate
+            created_at_key = created_at if isinstance(created_at, str) else ""
+            step_key = step if isinstance(step, (int, float)) else -1
+            return (created_at_key, step_key)
+
+        _, _, rollback_snapshot = max(rollback_candidates, key=_candidate_key)
+
+        # Prepare rollback values without mutating stored history
+        rollback_values = dict(rollback_snapshot.values or {})
+        if "messages" in rollback_values and isinstance(rollback_values["messages"], list):
+            rollback_values["messages"] = list(rollback_values["messages"])
+
+        # Clear context indicators in the rollback snapshot so fresh ones are generated
+        rollback_values["context_indicators"] = None
+
+        # Roll back the thread to that checkpoint
+        source_chat_graph.update_state(
+            config=rollback_snapshot.config,
+            values=rollback_values
+        )
+
+        # Determine model override (request override takes precedence over session override)
+        model_override = request.model_override or getattr(session, 'model_override', None)
+
+        # Update session timestamp
+        await session.save()
+
+        # Return streaming response using the restored state
+        return StreamingResponse(
+            stream_source_chat_response(
+                session_id=session_id,
+                source_id=full_source_id,
+                message=None,  # No new user message for regeneration
+                model_override=model_override
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Cache-Control"
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error regenerating source chat message: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error regenerating message: {str(e)}")

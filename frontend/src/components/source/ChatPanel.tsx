@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -40,6 +40,7 @@ interface ChatPanelProps {
   onSendMessage: (message: string, modelOverride?: string) => void
   modelOverride?: string
   onModelChange?: (model?: string) => void
+  onRegenerateMessage?: () => void
   // Session management props
   sessions?: BaseChatSession[]
   currentSessionId?: string | null
@@ -64,6 +65,7 @@ export function ChatPanel({
   onSendMessage,
   modelOverride,
   onModelChange,
+  onRegenerateMessage,
   sessions = [],
   currentSessionId,
   onCreateSession,
@@ -122,6 +124,16 @@ export function ChatPanel({
   // Detect platform for placeholder text
   const isMac = typeof navigator !== 'undefined' && navigator.userAgent.toUpperCase().indexOf('MAC') >= 0
   const keyHint = isMac ? '⌘+Enter' : 'Ctrl+Enter'
+
+  // Compute the last AI message ID for regenerate functionality
+  const lastAiMessageId = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].type === 'ai') {
+        return messages[index].id
+      }
+    }
+    return null
+  }, [messages])
 
   return (
     <>
@@ -210,6 +222,8 @@ export function ChatPanel({
                       <MessageActions
                         content={message.content}
                         notebookId={notebookId}
+                        onRegenerate={message.id === lastAiMessageId ? onRegenerateMessage : undefined}
+                        disabled={isStreaming}
                       />
                     )}
                   </div>

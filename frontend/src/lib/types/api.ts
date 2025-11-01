@@ -126,7 +126,7 @@ export interface BaseChatSession {
 
 export interface SourceChatSession extends BaseChatSession {
   source_id: string
-  model_override?: string
+  model_override?: string | null
 }
 
 export interface SourceChatMessage {
@@ -150,16 +150,20 @@ export interface SourceChatSessionWithMessages extends SourceChatSession {
 export interface CreateSourceChatSessionRequest {
   source_id: string
   title?: string
-  model_override?: string
+  model_override?: string | null
 }
 
 export interface UpdateSourceChatSessionRequest {
   title?: string
-  model_override?: string
+  model_override?: string | null
 }
 
 export interface SendMessageRequest {
   message: string
+  model_override?: string
+}
+
+export interface RegenerateMessageRequest {
   model_override?: string
 }
 
