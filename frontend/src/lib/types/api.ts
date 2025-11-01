@@ -244,3 +244,101 @@ export interface BulkSourceOperationResponse {
     error?: string
   }>
 }
+
+
+// Batch Upload Types
+
+export interface BatchUploadResponse {
+  batch_id: string
+  status: 'initializing' | 'uploading' | 'validating' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'paused'
+  total_files: number
+  total_size: number
+  estimated_duration?: number
+  message: string
+}
+
+export interface FileProcessingInfo {
+  file_id: string
+  original_filename: string
+  file_size: number
+  mime_type: string
+  status: 'pending' | 'uploading' | 'uploaded' | 'validating' | 'validated' | 'processing' | 'completed' | 'failed' | 'retrying' | 'skipped'
+  error_message?: string
+  retry_count: number
+  upload_progress: number
+  processing_progress: number
+  notebook_ids: string[]
+}
+
+export interface BatchUploadStatusResponse {
+  batch_id: string
+  status: 'initializing' | 'uploading' | 'validating' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'paused'
+  progress_percentage: number
+  total_files: number
+  processed_files: number
+  failed_files: number
+  skipped_files: number
+  total_size: number
+  uploaded_size: number
+  files: FileProcessingInfo[]
+  estimated_time_remaining?: number
+  error_summary: Record<string, number>
+  created_at: string
+  started_at?: string
+  completed_at?: string
+}
+
+export interface BatchControlResponse {
+  success: boolean
+  message: string
+  batch_id: string
+  current_status: string
+  progress_percentage: number
+}
+
+export interface BatchFilesResponse {
+  batch_id: string
+  total_files: number
+  filtered_by_status?: string
+  files: {
+    file_id: string
+    original_filename: string
+    file_size: number
+    mime_type: string
+    status: string
+    error_message?: string
+    retry_count: number
+    upload_progress: number
+    processing_progress: number
+    notebook_ids: string[]
+  }[]
+}
+
+export interface ActiveBatchesResponse {
+  active_batches: {
+    batch_id: string
+    status: string
+    total_files: number
+    processed_files: number
+    failed_files: number
+    progress_percentage: number
+    created_at: string
+    started_at?: string
+    estimated_time_remaining?: number
+  }[]
+  total_active: number
+}
+
+export interface BatchStatsResponse {
+  user_id: string
+  statistics: {
+    total_batches: number
+    processing_batches: number
+    completed_batches: number
+    failed_batches: number
+    total_files: number
+    total_size_bytes: number
+    total_size_mb: number
+    average_batch_size: number
+  }
+}

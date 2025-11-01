@@ -6,10 +6,19 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, type Query } from '@tanstack/react-query'
 import { useToast } from '@/lib/hooks/use-toast'
 
 import { apiClient } from '@/lib/api/client'
+import {
+  BatchUploadResponse,
+  BatchUploadStatusResponse,
+  BatchControlResponse,
+  BatchFilesResponse,
+  ActiveBatchesResponse,
+  BatchStatsResponse,
+  FileProcessingInfo,
+} from '@/lib/types/api'
 import { useSettings } from '@/lib/hooks/use-settings'
 
 const getErrorDetail = (error: { response?: { data?: { detail?: string } }; message?: string }, fallback: string) => {
@@ -20,103 +29,6 @@ const getErrorDetail = (error: { response?: { data?: { detail?: string } }; mess
     return error.message
   }
   return fallback
-}
-
-// Types
-
-interface BatchUploadResponse {
-  batch_id: string
-  status: 'initializing' | 'uploading' | 'validating' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'paused'
-  total_files: number
-  total_size: number
-  estimated_duration?: number
-  message: string
-}
-
-interface FileProcessingInfo {
-  file_id: string
-  original_filename: string
-  file_size: number
-  mime_type: string
-  status: 'pending' | 'uploading' | 'uploaded' | 'validating' | 'validated' | 'processing' | 'completed' | 'failed' | 'retrying' | 'skipped'
-  error_message?: string
-  retry_count: number
-  upload_progress: number
-  processing_progress: number
-  notebook_ids: string[]
-}
-
-interface BatchUploadStatusResponse {
-  batch_id: string
-  status: 'initializing' | 'uploading' | 'validating' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'paused'
-  progress_percentage: number
-  total_files: number
-  processed_files: number
-  failed_files: number
-  skipped_files: number
-  total_size: number
-  uploaded_size: number
-  files: FileProcessingInfo[]
-  estimated_time_remaining?: number
-  error_summary: Record<string, number>
-  created_at: string
-  started_at?: string
-  completed_at?: string
-}
-
-interface BatchControlResponse {
-  success: boolean
-  message: string
-  batch_id: string
-  current_status: string
-  progress_percentage: number
-}
-
-interface BatchFilesResponse {
-  batch_id: string
-  total_files: number
-  filtered_by_status?: string
-  files: {
-    file_id: string
-    original_filename: string
-    file_size: number
-    mime_type: string
-    status: string
-    error_message?: string
-    retry_count: number
-    upload_progress: number
-    processing_progress: number
-    notebook_ids: string[]
-  }[]
-}
-
-interface ActiveBatchesResponse {
-  active_batches: {
-    batch_id: string
-    status: string
-    total_files: number
-    processed_files: number
-    failed_files: number
-    progress_percentage: number
-    created_at: string
-    started_at?: string
-    estimated_time_remaining?: number
-  }[]
-  total_active: number
-}
-
-interface BatchStatsResponse {
-  user_id: string
-  statistics: {
-    total_batches: number
-    processing_batches: number
-    completed_batches: number
-    failed_batches: number
-    total_files: number
-    total_size_bytes: number
-    total_size_mb: number
-    average_batch_size: number
-  }
 }
 
 // Query keys
@@ -245,11 +157,12 @@ export function useBatchUpload() {
   })
 
   // Status polling
-  const statusQuery = useQuery({
+  const statusQuery = useQuery<BatchUploadStatusResponse | null, Error>({
     queryKey: BATCH_UPLOAD_KEYS.status(currentBatchId || ''),
-    queryFn: () => currentBatchId ? batchUploadApi.getStatus(currentBatchId) : null,
+    queryFn: () => (currentBatchId ? batchUploadApi.getStatus(currentBatchId) : null),
     enabled: !!currentBatchId,
-    refetchInterval: (data, _query) => {
+    refetchInterval: (query: Query<BatchUploadStatusResponse | null, Error>) => {
+      const data = query.state.data
       // Poll more frequently during active processing
       if (!data) return false
 
@@ -493,15 +406,16 @@ export function useBatchUploadStats() {
 }
 
 export function useBatchFiles(batchId: string, statusFilter?: string) {
-  return useQuery({
+  return useQuery<BatchFilesResponse, Error>({
     queryKey: BATCH_UPLOAD_KEYS.files(batchId, statusFilter),
     queryFn: () => batchUploadApi.getFiles(batchId, statusFilter),
     enabled: !!batchId,
-    refetchInterval: (data, _query) => {
+    refetchInterval: (query: Query<BatchFilesResponse, Error>) => {
+      const data = query.state.data
       // Only refetch if there are active files
       if (!data?.files) return false
 
-      const hasActiveFiles = data.files.some((file: FileProcessingInfo) =>
+      const hasActiveFiles = data.files.some(file =>
         ['uploading', 'validating', 'processing', 'pending', 'retrying'].includes(file.status)
       )
 

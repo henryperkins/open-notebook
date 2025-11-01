@@ -49,7 +49,7 @@ import { useNotebooks } from '@/lib/hooks/use-notebooks'
 import { useSettings } from '@/lib/hooks/use-settings'
 import { cn } from '@/lib/utils'
 import { formatFileSize, formatTimeRemaining } from '@/lib/utils/format'
-import { NotebookResponse } from '@/lib/types/api'
+import { NotebookResponse, BatchUploadStatusResponse } from '@/lib/types/api'
 
 interface BatchUploadDialogProps {
   open: boolean
@@ -131,17 +131,18 @@ export function BatchUploadDialog({
 
   // Auto-switch to progress tab when uploading starts
   useEffect(() => {
-    if (batchUpload.currentBatch && (batchUpload.currentBatch as any).status !== 'initializing') {
+    if (batchUpload.currentBatch && batchUpload.currentBatch.status !== 'initializing') {
       setActiveTab('progress')
     }
   }, [batchUpload.currentBatch])
 
   // Update file statuses from batch upload hook
   useEffect(() => {
-    if ((batchUpload.currentBatch as any)?.files) {
+    if (batchUpload.currentBatch?.files) {
+      const currentBatch = batchUpload.currentBatch
       setFiles(prevFiles =>
         prevFiles.map(fileItem => {
-          const batchFile = (batchUpload.currentBatch as any).files.find(
+          const batchFile = currentBatch.files.find(
             bf => bf.original_filename === fileItem.file.name
           )
 
