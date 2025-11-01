@@ -1,16 +1,21 @@
-from typing import ClassVar, Dict, Optional, Union
+from typing import TYPE_CHECKING, ClassVar, Dict, Optional, Union
 
-from esperanto import (
-    AIFactory,
-    EmbeddingModel,
-    LanguageModel,
-    SpeechToTextModel,
-    TextToSpeechModel,
-)
+from esperanto.factory import AIFactory
 from loguru import logger
 
 from open_notebook.database.repository import repo_query
 from open_notebook.domain.base import ObjectModel, RecordModel
+
+if TYPE_CHECKING:
+    from esperanto.providers.embedding.base import EmbeddingModel
+    from esperanto.providers.llm.base import LanguageModel
+    from esperanto.providers.stt.base import SpeechToTextModel
+    from esperanto.providers.tts.base import TextToSpeechModel
+else:
+    LanguageModel = object
+    EmbeddingModel = object
+    SpeechToTextModel = object
+    TextToSpeechModel = object
 
 ModelType = Union[LanguageModel, EmbeddingModel, SpeechToTextModel, TextToSpeechModel]
 
@@ -136,6 +141,7 @@ class ModelManager:
 
         if not self._default_models:
             raise RuntimeError("Failed to initialize default models configuration")
+        assert isinstance(self._default_models, DefaultModels)
         return self._default_models
 
     async def get_speech_to_text(self, **kwargs) -> Optional[SpeechToTextModel]:
