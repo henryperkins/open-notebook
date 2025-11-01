@@ -31,6 +31,7 @@ from commands.source_commands import SourceProcessingInput
 from open_notebook.config import UPLOADS_FOLDER
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.batch import BatchSourceRelationship, BatchUpload
+from open_notebook.domain.content_settings import ContentSettings
 from open_notebook.domain.notebook import Asset, Notebook, Source
 from open_notebook.domain.transformation import Transformation
 from open_notebook.exceptions import InvalidInputError
@@ -44,7 +45,7 @@ async def create_batch_sources(
     notebook_id: Optional[str] = Form(None),
     notebooks: Optional[str] = Form(None),
     transformations: Optional[str] = Form(None),
-    embed: str = Form("false"),
+    embed: Optional[str] = Form(None),
     async_processing: str = Form("true"),
     batch_name: Optional[str] = Form(None)
 ):
@@ -52,7 +53,9 @@ async def create_batch_sources(
     import json
 
     # Helper to convert string to bool
-    def str_to_bool(value: str) -> bool:
+    def str_to_bool(value: Optional[str], fallback: bool = False) -> bool:
+        if value is None:
+            return fallback
         return value.lower() in ("true", "1", "yes", "on")
 
     # Parse JSON strings for notebooks and transformations
@@ -71,6 +74,11 @@ async def create_batch_sources(
             transformation_ids = json.loads(transformations)
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="Invalid JSON in transformations field")
+
+    settings = await ContentSettings.get_instance()
+    embed_option = (settings.default_embedding_option or "").lower()
+    default_embed = embed_option in ("always", "ask")
+    embed_bool = str_to_bool(embed, default_embed)
 
     # Create a new batch upload record
     batch_upload = BatchUpload(
@@ -137,7 +145,7 @@ async def create_batch_sources(
             batch_id=str(batch_upload.id),
             notebook_ids=notebook_ids,
             transformations=transformation_ids,
-            embed=str_to_bool(embed)
+            embed=embed_bool
         )
         command_id = await CommandService.submit_command_job(
             "open_notebook",
@@ -224,7 +232,7 @@ async def save_uploaded_file(upload_file: UploadFile) -> str:
         raise
 
 
-def parse_source_form_data(
+async def parse_source_form_data(
     type: str = Form(...),
     notebook_id: Optional[str] = Form(None),
     notebooks: Optional[str] = Form(None),  # JSON string of notebook IDs
@@ -232,7 +240,7 @@ def parse_source_form_data(
     content: Optional[str] = Form(None),
     title: Optional[str] = Form(None),
     transformations: Optional[str] = Form(None),  # JSON string of transformation IDs
-    embed: str = Form("false"),  # Accept as string, convert to bool
+    embed: Optional[str] = Form(None),  # Accept as string, convert to bool
     delete_source: str = Form("false"),  # Accept as string, convert to bool
     async_processing: str = Form("false"),  # Accept as string, convert to bool
     file: Optional[UploadFile] = File(None),
@@ -241,12 +249,18 @@ def parse_source_form_data(
     import json
 
     # Convert string booleans to actual booleans
-    def str_to_bool(value: str) -> bool:
+    def str_to_bool(value: Optional[str], fallback: bool = False) -> bool:
+        if value is None:
+            return fallback
         return value.lower() in ("true", "1", "yes", "on")
 
-    embed_bool = str_to_bool(embed)
-    delete_source_bool = str_to_bool(delete_source)
-    async_processing_bool = str_to_bool(async_processing)
+    settings = await ContentSettings.get_instance()
+    embed_option = (settings.default_embedding_option or "").lower()
+    default_embed = embed_option in ("always", "ask")
+
+    embed_bool = str_to_bool(embed, default_embed)
+    delete_source_bool = str_to_bool(delete_source, False)
+    async_processing_bool = str_to_bool(async_processing, False)
 
     # Parse JSON strings
     notebooks_list = None

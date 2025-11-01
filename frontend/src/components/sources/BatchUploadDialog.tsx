@@ -46,6 +46,7 @@ import { Upload, File, X, Pause, Play, Square, AlertCircle, CheckCircle, Clock, 
 
 import { useBatchUpload } from '@/lib/hooks/use-batch-upload'
 import { useNotebooks } from '@/lib/hooks/use-notebooks'
+import { useSettings } from '@/lib/hooks/use-settings'
 import { cn } from '@/lib/utils'
 import { formatFileSize, formatTimeRemaining } from '@/lib/utils/format'
 import { NotebookResponse } from '@/lib/types/api'
@@ -103,7 +104,9 @@ export function BatchUploadDialog({
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const notebooksQuery = useNotebooks()
+  const { data: settings } = useSettings()
   const batchUpload = useBatchUpload()
+  const [embedEnabled, setEmbedEnabled] = useState<boolean | null>(null)
 
   // Sync notebook selection when parent dialog opens or defaults change
   useEffect(() => {
@@ -216,6 +219,7 @@ export function BatchUploadDialog({
         notebookIds: selectedNotebooks,
         priority,
         autoStart,
+        embed: embedEnabled === null ? undefined : embedEnabled,
       })
       onSuccess?.()
     } catch (error) {
@@ -245,18 +249,23 @@ export function BatchUploadDialog({
     setFiles([])
     setActiveTab('upload')
     batchUpload.reset()
+    setEmbedEnabled(null)
   }
 
   const handleClose = () => {
+    let shouldClose = true
     if (batchUpload.currentBatch?.status &&
         !['completed', 'failed', 'cancelled'].includes(batchUpload.currentBatch.status)) {
       // Ask for confirmation if upload is in progress
       if (confirm('Upload is still in progress. Are you sure you want to close?')) {
         handleCancelUpload()
-        onOpenChange(false)
+      } else {
+        shouldClose = false
       }
-    } else {
+    }
+    if (shouldClose) {
       onOpenChange(false)
+      setEmbedEnabled(null)
     }
   }
 
@@ -372,6 +381,28 @@ export function BatchUploadDialog({
                       })}
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Embedding</Label>
+                  <label className="flex items-start gap-3 p-3 border border-border rounded-md hover:bg-muted cursor-pointer">
+                    <Checkbox
+                      checked={embedEnabled ?? false}
+                      onCheckedChange={(checked) => setEmbedEnabled(checked === true)}
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1">
+                      <span className="text-sm font-medium block">Embed content for vector search</span>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Enables semantic search and notebook Q&amp;A for uploaded files.
+                      </p>
+                      {settings?.default_embedding_option && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Workspace default: <span className="font-medium capitalize">{settings.default_embedding_option}</span>. Toggle to override for this batch.
+                        </p>
+                      )}
+                    </div>
+                  </label>
                 </div>
               </div>
 
@@ -662,3 +693,28 @@ export function BatchUploadDialog({
     </Dialog>
   )
 }
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    if (!settings) {
+      setEmbedEnabled((prev) => (prev === null ? false : prev))
+      return
+    }
+    setEmbedEnabled((prev) => {
+      if (prev !== null) {
+        return prev
+      }
+      const option = settings.default_embedding_option
+      if (!option) {
+        return false
+      }
+      return option === 'always' || option === 'ask'
+    })
+  }, [open, settings])
+
+  useEffect(() => {
+    if (!open) {
+      setEmbedEnabled(null)
+    }
+  }, [open])

@@ -256,6 +256,7 @@ class SettingsResponse(BaseModel):
     default_content_processing_engine_doc: Optional[str] = None
     default_content_processing_engine_url: Optional[str] = None
     default_embedding_option: Optional[str] = None
+    embedding_dimension: Optional[int] = None
     auto_delete_files: Optional[str] = None
     youtube_preferred_languages: Optional[List[str]] = None
     google_drive_api_key: Optional[str] = None
@@ -265,6 +266,12 @@ class SettingsUpdate(BaseModel):
     default_content_processing_engine_doc: Optional[str] = None
     default_content_processing_engine_url: Optional[str] = None
     default_embedding_option: Optional[str] = None
+    embedding_dimension: Optional[int] = Field(
+        None,
+        ge=16,
+        le=32768,
+        description="Expected embedding vector length",
+    )
     auto_delete_files: Optional[str] = None
     youtube_preferred_languages: Optional[List[str]] = None
     google_drive_api_key: Optional[str] = None

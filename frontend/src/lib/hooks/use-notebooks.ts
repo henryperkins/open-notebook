@@ -4,11 +4,18 @@ import { QUERY_KEYS } from '@/lib/api/query-client'
 import { useToast } from '@/lib/hooks/use-toast'
 import { CreateNotebookRequest, UpdateNotebookRequest } from '@/lib/types/api'
 
+// Hook for fetching notebooks with optional archived filtering
+
 export function useNotebooks(archived?: boolean) {
   return useQuery({
     queryKey: [...QUERY_KEYS.notebooks, { archived }],
     queryFn: () => notebooksApi.list({ archived, order_by: 'updated desc' }),
   })
+}
+
+// Helper function to determine if notebooks should be filtered by archived status
+export function shouldFilterArchived(includeArchived?: boolean): boolean {
+  return includeArchived === true;
 }
 
 export function useNotebook(id: string) {

@@ -3,29 +3,52 @@ Text utilities for Open Notebook.
 Extracted from main utils to avoid circular imports.
 """
 
+import os
 import re
 import unicodedata
-from typing import Any, Tuple
+from typing import Any, List, Optional, Tuple
+
+from loguru import logger
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from .token_utils import token_count
 
+
+def _vector_config_int(name: str, default: int, minimum: int = 1) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+        if value < minimum:
+            raise ValueError
+        return value
+    except ValueError:
+        logger.warning(f"Invalid value for {name}={raw!r}; using {default}.")
+        return default
+
 # Pattern for matching thinking content in AI responses
 THINK_PATTERN = re.compile(r"<think>(.*?)</think>", re.DOTALL)
 
 
-def split_text(txt: str, chunk_size=500):
+def split_text(txt: str, chunk_size: Optional[int] = None, max_tokens: Optional[int] = None) -> List[str]:
     """
     Split the input text into chunks.
 
     Args:
         txt (str): The input text to be split.
-        chunk_size (int): The size of each chunk. Default is 500.
+        chunk_size (int, optional): The size of each chunk. Defaults to the value of
+            the SOURCE_VECTORIZE_CHUNK_SIZE environment variable, or 500.
+        max_tokens (int, optional): Maximum tokens per chunk. Overrides chunk_size if provided.
 
     Returns:
         list: A list of text chunks.
     """
+    if max_tokens is not None:
+        chunk_size = max_tokens
+    elif chunk_size is None:
+        chunk_size = _vector_config_int("SOURCE_VECTORIZE_CHUNK_SIZE", 500)
     overlap = int(chunk_size * 0.15)
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,

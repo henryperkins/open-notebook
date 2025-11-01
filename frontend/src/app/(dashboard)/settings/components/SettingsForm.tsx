@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -19,6 +20,7 @@ const settingsSchema = z.object({
   default_content_processing_engine_doc: z.enum(['auto', 'docling', 'simple']).optional(),
   default_content_processing_engine_url: z.enum(['auto', 'firecrawl', 'jina', 'simple']).optional(),
   default_embedding_option: z.enum(['ask', 'always', 'never']).optional(),
+  embedding_dimension: z.number().int().min(16).max(32768).optional(),
   auto_delete_files: z.enum(['yes', 'no']).optional(),
 })
 
@@ -47,6 +49,7 @@ export function SettingsForm() {
       default_content_processing_engine_doc: undefined,
       default_content_processing_engine_url: undefined,
       default_embedding_option: undefined,
+      embedding_dimension: undefined,
       auto_delete_files: undefined,
     }
   })
@@ -57,16 +60,19 @@ export function SettingsForm() {
   }
 
   useEffect(() => {
-    if (settings && settings.default_content_processing_engine_doc && !hasResetForm) {
-      const formData = {
-        default_content_processing_engine_doc: settings.default_content_processing_engine_doc as 'auto' | 'docling' | 'simple',
-        default_content_processing_engine_url: settings.default_content_processing_engine_url as 'auto' | 'firecrawl' | 'jina' | 'simple',
-        default_embedding_option: settings.default_embedding_option as 'ask' | 'always' | 'never',
-        auto_delete_files: settings.auto_delete_files as 'yes' | 'no',
-      }
-      reset(formData)
-      setHasResetForm(true)
+    if (!settings || hasResetForm) {
+      return
     }
+
+    const formData: SettingsFormData = {
+      default_content_processing_engine_doc: settings.default_content_processing_engine_doc as 'auto' | 'docling' | 'simple',
+      default_content_processing_engine_url: settings.default_content_processing_engine_url as 'auto' | 'firecrawl' | 'jina' | 'simple',
+      default_embedding_option: settings.default_embedding_option as 'ask' | 'always' | 'never',
+      embedding_dimension: settings.embedding_dimension ?? undefined,
+      auto_delete_files: settings.auto_delete_files as 'yes' | 'no',
+    }
+    reset(formData)
+    setHasResetForm(true)
   }, [hasResetForm, reset, settings])
 
   // Fetch Google Drive integration status
@@ -236,6 +242,35 @@ export function SettingsForm() {
                 </Select>
               )}
             />
+            <div className="space-y-2">
+              <Label htmlFor="embedding_dimension">Embedding Dimension</Label>
+              <Controller
+                name="embedding_dimension"
+                control={control}
+                render={({ field }) => (
+                  <Input
+                    id="embedding_dimension"
+                    type="number"
+                    min={16}
+                    max={32768}
+                    value={field.value ?? ''}
+                    onChange={(event) => {
+                      const value = event.target.value.trim()
+                      if (value === '') {
+                        field.onChange(undefined)
+                        return
+                      }
+                      const numericValue = Number(value)
+                      field.onChange(Number.isNaN(numericValue) ? undefined : numericValue)
+                    }}
+                    placeholder="e.g. 1536"
+                  />
+                )}
+              />
+              <p className="text-xs text-muted-foreground">
+                Must match the vector size produced by your embedding model. Changing this will rebuild vector indexes; re-embed existing content to populate the new dimension.
+              </p>
+            </div>
             <Collapsible open={expandedSections.embedding} onOpenChange={() => toggleSection('embedding')}>
               <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.embedding ? 'rotate-180' : ''}`} />

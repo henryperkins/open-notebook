@@ -260,6 +260,7 @@ class TestContentSettings:
         assert settings.record_id == "open_notebook:content_settings"
         assert settings.default_content_processing_engine_doc == "auto"
         assert settings.default_embedding_option == "ask"
+        assert settings.embedding_dimension == 1536
         assert settings.auto_delete_files == "yes"
         assert settings.youtube_preferred_languages is not None
         assert len(settings.youtube_preferred_languages) > 0

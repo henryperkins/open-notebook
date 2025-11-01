@@ -25,6 +25,7 @@ class SettingsService:
             default_content_processing_engine_doc=settings_data.get("default_content_processing_engine_doc"),
             default_content_processing_engine_url=settings_data.get("default_content_processing_engine_url"),
             default_embedding_option=settings_data.get("default_embedding_option"),
+            embedding_dimension=settings_data.get("embedding_dimension"),
             auto_delete_files=settings_data.get("auto_delete_files"),
             youtube_preferred_languages=settings_data.get("youtube_preferred_languages"),
             google_drive_api_key=settings_data.get("google_drive_api_key"),
@@ -38,6 +39,7 @@ class SettingsService:
             "default_content_processing_engine_doc": settings.default_content_processing_engine_doc,
             "default_content_processing_engine_url": settings.default_content_processing_engine_url,
             "default_embedding_option": settings.default_embedding_option,
+            "embedding_dimension": settings.embedding_dimension,
             "auto_delete_files": settings.auto_delete_files,
             "youtube_preferred_languages": settings.youtube_preferred_languages,
             "google_drive_api_key": settings.google_drive_api_key,
@@ -50,6 +52,7 @@ class SettingsService:
         settings.default_content_processing_engine_doc = settings_data.get("default_content_processing_engine_doc")
         settings.default_content_processing_engine_url = settings_data.get("default_content_processing_engine_url")
         settings.default_embedding_option = settings_data.get("default_embedding_option")
+        settings.embedding_dimension = settings_data.get("embedding_dimension")
         settings.auto_delete_files = settings_data.get("auto_delete_files")
         settings.youtube_preferred_languages = settings_data.get("youtube_preferred_languages")
         settings.google_drive_api_key = settings_data.get("google_drive_api_key")

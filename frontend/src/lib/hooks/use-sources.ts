@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { sourcesApi } from '@/lib/api/sources'
 import { QUERY_KEYS } from '@/lib/api/query-client'
 import { useToast } from '@/lib/hooks/use-toast'
+import { useSettings } from '@/lib/hooks/use-settings'
 import { 
   CreateSourceRequest, 
   UpdateSourceRequest, 
@@ -135,10 +136,23 @@ export function useDeleteSource() {
 export function useFileUpload() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
+  const { data: settings } = useSettings()
 
   return useMutation({
-    mutationFn: ({ file, notebookId }: { file: File; notebookId: string }) =>
-      sourcesApi.upload(file, notebookId),
+    mutationFn: ({ file, notebookId }: { file: File; notebookId: string }) => {
+      const preference = settings?.default_embedding_option
+      const embed =
+        preference === undefined
+          ? undefined
+          : preference === 'always' || preference === 'ask'
+
+      return sourcesApi.upload({
+        file,
+        notebookId,
+        embed,
+        asyncProcessing: true,
+      })
+    },
     onSuccess: (_: unknown, variables: { file: File; notebookId: string }) => {
       queryClient.invalidateQueries({ 
         queryKey: QUERY_KEYS.sources(variables.notebookId) 

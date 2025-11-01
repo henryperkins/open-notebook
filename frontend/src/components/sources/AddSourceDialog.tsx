@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -99,12 +99,27 @@ export function AddSourceDialog({
 
   // Cleanup timeouts to prevent memory leaks
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const hasInitializedDefaults = useRef(false)
 
   // API hooks
   const createSource = useCreateSource()
   const { data: notebooks = [], isLoading: notebooksLoading } = useNotebooks()
   const { data: transformations = [], isLoading: transformationsLoading } = useTransformations()
   const { data: settings } = useSettings()
+
+  const computeDefaultEmbed = useCallback(() => {
+    const option = settings?.default_embedding_option
+    if (!option) {
+      return false
+    }
+    return option === 'always' || option === 'ask'
+  }, [settings])
+
+  const computeDefaultTransformations = useCallback(() => {
+    return transformations
+      .filter(t => t.apply_default)
+      .map(t => t.id)
+  }, [transformations])
 
   // Form setup
   const {
@@ -118,33 +133,35 @@ export function AddSourceDialog({
     resolver: zodResolver(createSourceSchema),
     defaultValues: {
       notebooks: defaultNotebookId ? [defaultNotebookId] : [],
-      embed: settings?.default_embedding_option === 'always' || settings?.default_embedding_option === 'ask',
+      embed: false,
       async_processing: true,
       transformations: [],
     },
   })
 
-  // Initialize form values when settings and transformations are loaded
+  const initializeFormDefaults = useCallback(() => {
+    const defaultTransformations = computeDefaultTransformations()
+    setSelectedTransformations(defaultTransformations)
+
+    const defaultNotebookSelection = defaultNotebookId ? [defaultNotebookId] : []
+    setSelectedNotebooks(defaultNotebookSelection)
+
+    reset({
+      notebooks: defaultNotebookSelection,
+      embed: computeDefaultEmbed(),
+      async_processing: true,
+      transformations: defaultTransformations,
+    })
+  }, [computeDefaultTransformations, defaultNotebookId, computeDefaultEmbed, reset])
+
+  // Initialize form values when settings become available
   useEffect(() => {
-    if (settings && transformations.length > 0) {
-      const defaultTransformations = transformations
-        .filter(t => t.apply_default)
-        .map(t => t.id)
-
-      setSelectedTransformations(defaultTransformations)
-
-      // Reset form with proper embed value based on settings
-      const embedValue = settings.default_embedding_option === 'always' ||
-                         (settings.default_embedding_option === 'ask')
-
-      reset({
-        notebooks: defaultNotebookId ? [defaultNotebookId] : [],
-        embed: embedValue,
-        async_processing: true,
-        transformations: [],
-      })
+    if (!settings || transformationsLoading || hasInitializedDefaults.current) {
+      return
     }
-  }, [settings, transformations, defaultNotebookId, reset])
+    initializeFormDefaults()
+    hasInitializedDefaults.current = true
+  }, [settings, transformationsLoading, initializeFormDefaults])
 
   // Cleanup effect
   useEffect(() => {
@@ -275,22 +292,13 @@ export function AddSourceDialog({
       timeoutRef.current = null
     }
 
-    reset()
     setCurrentStep(1)
     setProcessing(false)
     setProcessingStatus(null)
-    setSelectedNotebooks(defaultNotebookId ? [defaultNotebookId] : [])
-
-    // Reset to default transformations
-    if (transformations.length > 0) {
-      const defaultTransformations = transformations
-        .filter(t => t.apply_default)
-        .map(t => t.id)
-      setSelectedTransformations(defaultTransformations)
-    } else {
-      setSelectedTransformations([])
-    }
-
+    setBatchUploadOpen(false)
+    setGoogleDriveOpen(false)
+    initializeFormDefaults()
+    hasInitializedDefaults.current = false
     onOpenChange(false)
   }
 

@@ -9,6 +9,10 @@ from surrealdb import RecordID
 
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.base import ObjectModel
+from open_notebook.domain.embedding_config import (
+    ensure_embedding_dimension,
+    get_configured_embedding_dimension,
+)
 from open_notebook.domain.models import model_manager
 from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
 from open_notebook.utils import split_text
@@ -87,7 +91,7 @@ class Notebook(ObjectModel):
                 fetch source
             ) order by source.updated desc
             """,
-                {"id": ensure_record_id(self.id)},
+                {"id": ensure_record_id(self.id) if self.id else None},
             )
             return [Source(**src["source"]) for src in srcs] if srcs else []
         except Exception as e:
@@ -104,7 +108,7 @@ class Notebook(ObjectModel):
                 fetch note
             ) order by note.updated desc
             """,
-                {"id": ensure_record_id(self.id)},
+                {"id": ensure_record_id(self.id) if self.id else None},
             )
             return [Note(**src["note"]) for src in srcs] if srcs else []
         except Exception as e:
@@ -125,7 +129,7 @@ class Notebook(ObjectModel):
                 )
                 order by chat_session.updated desc
             """,
-                {"id": ensure_record_id(self.id)},
+                {"id": ensure_record_id(self.id) if self.id else None},
             )
             return (
                 [ChatSession(**src["chat_session"][0]) for src in srcs] if srcs else []
@@ -153,7 +157,7 @@ class SourceEmbedding(ObjectModel):
                 """
             select source.* from $id fetch source
             """,
-                {"id": ensure_record_id(self.id)},
+                {"id": ensure_record_id(self.id) if self.id else None},
             )
             return Source(**src[0]["source"])
         except Exception as e:
@@ -173,7 +177,7 @@ class SourceInsight(ObjectModel):
                 """
             select source.* from $id fetch source
             """,
-                {"id": ensure_record_id(self.id)},
+                {"id": ensure_record_id(self.id) if self.id else None},
             )
             return Source(**src[0]["source"])
         except Exception as e:
@@ -288,7 +292,7 @@ class Source(ObjectModel):
                 """
                 select count() as chunks from source_embedding where source=$id GROUP ALL
                 """,
-                {"id": ensure_record_id(self.id)},
+                {"id": ensure_record_id(self.id) if self.id else None},
             )
             if len(result) == 0:
                 return 0
@@ -304,7 +308,7 @@ class Source(ObjectModel):
                 """
                 SELECT * FROM source_insight WHERE source=$id
                 """,
-                {"id": ensure_record_id(self.id)},
+                {"id": ensure_record_id(self.id) if self.id else None},
             )
             return [SourceInsight(**insight) for insight in result]
         except Exception as e:
@@ -321,6 +325,7 @@ class Source(ObjectModel):
         async with _VECTORIZE_SEMAPHORE:
             logger.info(f"Starting vectorization for source {self.id}")
             EMBEDDING_MODEL = await model_manager.get_embedding_model()
+            expected_dimension = await get_configured_embedding_dimension()
 
             if not self.full_text:
                 logger.warning(f"No text to vectorize for source {self.id}")
@@ -350,6 +355,11 @@ class Source(ObjectModel):
                                         "EMBEDDING_MODEL is not configured"
                                     )
                                 embedding = (await EMBEDDING_MODEL.aembed([chunk]))[0]
+                                ensure_embedding_dimension(
+                                    embedding,
+                                    expected_dimension,
+                                    f"source {self.id} chunk {idx}",
+                                )
                             cleaned_content = chunk
                             logger.debug(f"Successfully processed chunk {idx}")
                             return (idx, embedding, cleaned_content)
@@ -376,7 +386,7 @@ class Source(ObjectModel):
                 successful_results: List[Tuple[int, List[float], str]] = []
 
                 for i, result in enumerate(results):
-                    if isinstance(result, Exception):
+                    if isinstance(result, BaseException):
                         failed_chunks.append(i)
                         logger.error(f"Chunk {i} failed to process: {result}")
                     else:
@@ -399,7 +409,7 @@ class Source(ObjectModel):
                     try:
                         delete_result = await db.query(
                             "DELETE source_embedding WHERE source = $source_id",
-                            {"source_id": ensure_record_id(self.id)},
+                            {"source_id": ensure_record_id(self.id) if self.id else None},
                         )
                         deleted_count = len(delete_result) if delete_result else 0
                         if deleted_count > 0:
@@ -418,7 +428,7 @@ class Source(ObjectModel):
                                     "embedding": $embedding,
                                 };""",
                                 {
-                                    "source_id": ensure_record_id(self.id),
+                                    "source_id": ensure_record_id(self.id) if self.id else None,
                                     "order": idx,
                                     "content": content,
                                     "embedding": embedding,
@@ -439,16 +449,24 @@ class Source(ObjectModel):
                 raise DatabaseOperationError(e)
 
     async def add_insight(self, insight_type: str, content: str) -> Any:
-        EMBEDDING_MODEL = await model_manager.get_embedding_model()
-        if not EMBEDDING_MODEL:
-            logger.warning("No embedding model found. Insight will not be searchable.")
-
         if not insight_type or not content:
             raise InvalidInputError("Insight type and content must be provided")
         try:
-            embedding = (
-                (await EMBEDDING_MODEL.aembed([content]))[0] if EMBEDDING_MODEL else []
-            )
+            chunks = split_text(content)
+            embedding = []
+            EMBEDDING_MODEL = await model_manager.get_embedding_model()
+            expected_dimension = await get_configured_embedding_dimension()
+            if not EMBEDDING_MODEL:
+                logger.warning("No embedding model found. Insight will not be searchable.")
+            elif chunks:
+                embeddings = await EMBEDDING_MODEL.aembed(chunks)
+                embedding = [sum(col) / len(col) for col in zip(*embeddings)]
+                ensure_embedding_dimension(
+                    embedding,
+                    expected_dimension,
+                    f"insight for source {self.id}",
+                )
+
             return await repo_query(
                 """
                 CREATE source_insight CONTENT {
@@ -458,7 +476,7 @@ class Source(ObjectModel):
                         "embedding": $embedding,
                 };""",
                 {
-                    "source_id": ensure_record_id(self.id),
+                    "source_id": ensure_record_id(self.id) if self.id else None,
                     "insight_type": insight_type,
                     "content": content,
                     "embedding": embedding,
@@ -565,7 +583,9 @@ async def vector_search(
         EMBEDDING_MODEL = await model_manager.get_embedding_model()
         if EMBEDDING_MODEL is None:
             raise ValueError("EMBEDDING_MODEL is not configured")
+        expected_dimension = await get_configured_embedding_dimension()
         embed = (await EMBEDDING_MODEL.aembed([keyword]))[0]
+        ensure_embedding_dimension(embed, expected_dimension, "vector search query")
         search_results = await repo_query(
             """
             SELECT * FROM fn::vector_search($embed, $results, $source, $note, $minimum_score);

@@ -6,6 +6,10 @@ from pydantic import BaseModel
 from surreal_commands import CommandInput, CommandOutput, command
 
 from open_notebook.database.repository import ensure_record_id, repo_query
+from open_notebook.domain.embedding_config import (
+    ensure_embedding_dimension,
+    get_configured_embedding_dimension,
+)
 from open_notebook.domain.models import model_manager
 from open_notebook.domain.notebook import Note, Source, SourceInsight
 
@@ -74,6 +78,7 @@ async def embed_single_item_command(
             raise ValueError(
                 "No embedding model configured. Please configure one in the Models section."
             )
+        expected_dimension = await get_configured_embedding_dimension()
 
         chunks_created = 0
 
@@ -116,6 +121,11 @@ async def embed_single_item_command(
 
             # Generate new embedding
             embedding = (await EMBEDDING_MODEL.aembed([insight.content]))[0]
+            ensure_embedding_dimension(
+                embedding,
+                expected_dimension,
+                f"insight {input_data.item_id}",
+            )
 
             # Update insight with new embedding
             await repo_query(
@@ -249,6 +259,7 @@ async def rebuild_embeddings_command(
             )
 
         logger.info(f"Using embedding model: {EMBEDDING_MODEL}")
+        expected_dimension = await get_configured_embedding_dimension()
 
         # Collect items to process
         items = await collect_items_for_rebuild(
@@ -333,6 +344,11 @@ async def rebuild_embeddings_command(
 
                 # Re-generate embedding
                 embedding = (await EMBEDDING_MODEL.aembed([insight.content]))[0]
+                ensure_embedding_dimension(
+                    embedding,
+                    expected_dimension,
+                    f"insight {insight_id}",
+                )
 
                 # Update insight with new embedding
                 await repo_query(

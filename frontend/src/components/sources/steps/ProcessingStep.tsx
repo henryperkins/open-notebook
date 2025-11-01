@@ -62,56 +62,41 @@ export function ProcessingStep({
         description="Configure how your source will be processed and stored."
       >
         <div className="space-y-4">
-          {settings?.default_embedding_option === 'ask' && (
-            <Controller
-              control={control}
-              name="embed"
-              render={({ field }) => (
-                <label className="flex items-start gap-3 cursor-pointer p-3 rounded-md hover:bg-muted">
-                  <Checkbox
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                    className="mt-0.5"
-                  />
-                  <div className="flex-1">
-                    <span className="text-sm font-medium block">Enable embedding for search</span>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Allows this source to be found in vector searches and AI queries
+          <Controller
+            control={control}
+            name="embed"
+            render={({ field }) => (
+              <label className="flex items-start gap-3 cursor-pointer p-3 rounded-md hover:bg-muted border border-border">
+                <Checkbox
+                  checked={field.value}
+                  onCheckedChange={(checked) => field.onChange(checked === true)}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <span className="text-sm font-medium block">Enable embedding for search</span>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Embedded content powers semantic search, notebook Q&amp;A, and insight generation.
+                  </p>
+                  {settings?.default_embedding_option && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Default setting: <span className="font-medium capitalize">{settings.default_embedding_option}</span>. Toggle to override for this source.
                     </p>
-                  </div>
-                </label>
-              )}
-            />
-          )}
+                  )}
+                </div>
+              </label>
+            )}
+          />
 
           {settings?.default_embedding_option === 'always' && (
-            <div className="p-3 rounded-md bg-primary/10 border border-primary/30">
-              <div className="flex items-start gap-3">
-                <div className="w-4 h-4 bg-primary rounded-full mt-0.5 flex-shrink-0"></div>
-                <div className="flex-1">
-                  <span className="text-sm font-medium block text-primary">Embedding enabled automatically</span>
-                  <p className="text-xs text-primary mt-1">
-                    Your settings are configured to always embed content for vector search.
-                    You can change this in <span className="font-medium">Settings</span>.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              This workspace embeds content by default. Disable above if you want to skip embedding for this upload.
+            </p>
           )}
 
           {settings?.default_embedding_option === 'never' && (
-            <div className="p-3 rounded-md bg-muted border border-border">
-              <div className="flex items-start gap-3">
-                <div className="w-4 h-4 bg-muted-foreground rounded-full mt-0.5 flex-shrink-0"></div>
-                <div className="flex-1">
-                  <span className="text-sm font-medium block text-foreground">Embedding disabled</span>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Your settings are configured to skip embedding. Vector search won&apos;t be available for this source.
-                    You can change this in <span className="font-medium">Settings</span>.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              Embedding is disabled by default. Enable above if you want this source to appear in vector search.
+            </p>
           )}
         </div>
       </FormSection>

@@ -80,13 +80,26 @@ export const sourcesApi = {
     return response.data
   },
 
-  upload: async (file: File, notebook_id: string) => {
+  upload: async ({
+    file,
+    notebookId,
+    embed,
+    asyncProcessing = true,
+  }: {
+    file: File
+    notebookId: string
+    embed?: boolean
+    asyncProcessing?: boolean
+  }) => {
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('notebook_id', notebook_id)
+    formData.append('notebook_id', notebookId)
     formData.append('type', 'upload')
-    formData.append('async_processing', 'true')
-    
+    formData.append('async_processing', String(asyncProcessing))
+    if (embed !== undefined) {
+      formData.append('embed', String(embed))
+    }
+
     const response = await apiClient.post<SourceResponse>('/sources', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',

@@ -10,6 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useToast } from '@/lib/hooks/use-toast'
 
 import { apiClient } from '@/lib/api/client'
+import { useSettings } from '@/lib/hooks/use-settings'
 
 const getErrorDetail = (error: { response?: { data?: { detail?: string } }; message?: string }, fallback: string) => {
   if (error?.response?.data?.detail) {
@@ -135,6 +136,7 @@ const batchUploadApi = {
     notebook_ids?: string[]
     priority?: 'low' | 'normal' | 'high' | 'urgent'
     auto_start?: boolean
+    embed?: boolean
   }): Promise<BatchUploadResponse> => {
     const formData = new FormData()
 
@@ -153,6 +155,9 @@ const batchUploadApi = {
     }
 
     formData.append('auto_start', String(data.auto_start ?? true))
+    if (data.embed !== undefined) {
+      formData.append('embed', String(data.embed))
+    }
 
     const response = await apiClient.post('/batch-uploads/init', formData, {
       headers: {
@@ -209,6 +214,7 @@ const batchUploadApi = {
 export function useBatchUpload() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
+  const { data: settings } = useSettings()
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const [currentBatchId, setCurrentBatchId] = useState<string | null>(null)
 
@@ -371,14 +377,24 @@ export function useBatchUpload() {
     notebookIds?: string[]
     priority?: 'low' | 'normal' | 'high' | 'urgent'
     autoStart?: boolean
+    embed?: boolean
   }) => {
+    const preference = settings?.default_embedding_option
+    const embed =
+      data.embed !== undefined
+        ? data.embed
+        : preference === undefined
+          ? undefined
+          : preference === 'always' || preference === 'ask'
+
     return initMutation.mutateAsync({
       files: data.files,
       notebook_ids: data.notebookIds,
       priority: data.priority || 'normal',
       auto_start: data.autoStart ?? true,
+      embed,
     })
-  }, [initMutation])
+  }, [initMutation, settings])
 
   const pauseBatch = useCallback(async (batchId: string) => {
     return pauseMutation.mutateAsync(batchId)

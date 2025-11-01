@@ -152,11 +152,22 @@ class ObjectModel(BaseModel):
                         logger.warning(
                             "No embedding model found. Content will not be searchable."
                         )
-                    data["embedding"] = (
-                        (await EMBEDDING_MODEL.aembed([embedding_content]))[0]
-                        if EMBEDDING_MODEL
-                        else []
-                    )
+                    if EMBEDDING_MODEL:
+                        embedding_vector = (await EMBEDDING_MODEL.aembed([embedding_content]))[0]
+                        from open_notebook.domain.embedding_config import (
+                            ensure_embedding_dimension,
+                            get_configured_embedding_dimension,
+                        )
+
+                        expected_dimension = await get_configured_embedding_dimension()
+                        ensure_embedding_dimension(
+                            embedding_vector,
+                            expected_dimension,
+                            f"{self.__class__.__name__} embedding",
+                        )
+                        data["embedding"] = embedding_vector
+                    else:
+                        data["embedding"] = []
 
             repo_result: Union[List[Dict[str, Any]], Dict[str, Any]]
             if self.id is None:

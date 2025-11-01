@@ -16,6 +16,12 @@ class ContentSettings(RecordModel):
     default_embedding_option: Optional[Literal["ask", "always", "never"]] = Field(
         "ask", description="Default Embedding Option for Vector Search"
     )
+    embedding_dimension: Optional[int] = Field(
+        1536,
+        ge=16,
+        le=32768,
+        description="Expected embedding vector dimension for semantic search",
+    )
     auto_delete_files: Optional[Literal["yes", "no"]] = Field(
         "yes", description="Auto Delete Uploaded Files"
     )
