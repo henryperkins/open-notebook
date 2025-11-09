@@ -263,7 +263,7 @@ export function SettingsForm() {
                       const numericValue = Number(value)
                       field.onChange(Number.isNaN(numericValue) ? undefined : numericValue)
                     }}
-                    placeholder="e.g. 1536"
+                    placeholder="e.g. 1024"
                   />
                 )}
               />

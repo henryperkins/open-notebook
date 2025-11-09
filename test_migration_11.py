@@ -39,17 +39,36 @@ async def test_migration_11_improvements():
         print("\n2. Testing vector search performance (HNSW indexes)...")
         try:
             import time
+
+            settings_result = await repo_query(
+                "SELECT embedding_dimension FROM open_notebook:content_settings LIMIT 1"
+            )
+            embedding_dimension = (
+                settings_result[0].get("embedding_dimension", 1024)
+                if settings_result
+                else 1024
+            )
+
             start_time = time.time()
-            result = await repo_query("""
-                RETURN fn::vector_search([0.1] * 1536, 5, true, true, 0.1)
-            """)
+            result = await repo_query(
+                """
+                RETURN fn::vector_search($vector, 5, true, true, 0.1)
+            """,
+                {"vector": [0.1] * embedding_dimension},
+            )
             end_time = time.time()
             search_time = end_time - start_time
 
             if search_time < 1.0:  # Should be very fast with HNSW
-                print(f"   ✅ Vector search is fast ({search_time:.3f}s) - HNSW indexes working")
+                print(
+                    f"   ✅ Vector search is fast ({search_time:.3f}s) "
+                    f"- HNSW indexes working at {embedding_dimension} dims"
+                )
             else:
-                print(f"   ⚠️  Vector search is slow ({search_time:.3f}s) - indexes may not be optimized")
+                print(
+                    f"   ⚠️  Vector search is slow ({search_time:.3f}s) "
+                    f"- indexes may not be optimized (dimension {embedding_dimension})"
+                )
         except Exception as e:
             print(f"   ❌ Vector search performance test failed: {e}")
 

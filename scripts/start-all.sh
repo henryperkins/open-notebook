@@ -29,12 +29,16 @@ echo "🔧 Starting API backend..."
 set -a
 source .env
 set +a
-uv run run_api.py &
+
+# Activate virtual environment
+source .venv/bin/activate
+
+python run_api.py &
 API_PID=$!
 
 sleep 3
 echo "⚙️ Starting background worker..."
-uv run --env-file .env surreal-commands-worker --import-modules commands &
+surreal-commands-worker --import-modules commands &
 WORKER_PID=$!
 
 sleep 2

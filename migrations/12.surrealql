@@ -1,0 +1,28 @@
+-- Migration 12: Align embedding defaults with 1024-dimension models
+
+-- Standardize workspace embedding dimension when legacy defaults are still present
+UPDATE open_notebook:content_settings
+    SET embedding_dimension = 1024
+    WHERE embedding_dimension = NONE OR embedding_dimension = 1536;
+
+-- Rebuild vector indexes to use 1024 dimensions
+REMOVE INDEX IF EXISTS idx_source_embedding_embedding ON TABLE source_embedding;
+DEFINE INDEX idx_source_embedding_embedding ON TABLE source_embedding
+    FIELDS embedding
+    HNSW
+    DIMENSION 1024
+    DIST COSINE;
+
+REMOVE INDEX IF EXISTS idx_source_insight_embedding ON TABLE source_insight;
+DEFINE INDEX idx_source_insight_embedding ON TABLE source_insight
+    FIELDS embedding
+    HNSW
+    DIMENSION 1024
+    DIST COSINE;
+
+REMOVE INDEX IF EXISTS idx_note_embedding ON TABLE note;
+DEFINE INDEX idx_note_embedding ON TABLE note
+    FIELDS embedding
+    HNSW
+    DIMENSION 1024
+    DIST COSINE;

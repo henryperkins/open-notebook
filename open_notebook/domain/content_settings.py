@@ -17,7 +17,7 @@ class ContentSettings(RecordModel):
         "ask", description="Default Embedding Option for Vector Search"
     )
     embedding_dimension: Optional[int] = Field(
-        1536,
+        1024,
         ge=16,
         le=32768,
         description="Expected embedding vector dimension for semantic search",

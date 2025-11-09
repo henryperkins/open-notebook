@@ -1,0 +1,28 @@
+-- Rollback Migration 12: Restore 1536-dimension defaults
+
+-- Revert workspace embedding dimension to legacy default when it matches the new standard
+UPDATE open_notebook:content_settings
+    SET embedding_dimension = 1536
+    WHERE embedding_dimension = NONE OR embedding_dimension = 1024;
+
+-- Rebuild vector indexes to use 1536 dimensions
+REMOVE INDEX IF EXISTS idx_source_embedding_embedding ON TABLE source_embedding;
+DEFINE INDEX idx_source_embedding_embedding ON TABLE source_embedding
+    FIELDS embedding
+    HNSW
+    DIMENSION 1536
+    DIST COSINE;
+
+REMOVE INDEX IF EXISTS idx_source_insight_embedding ON TABLE source_insight;
+DEFINE INDEX idx_source_insight_embedding ON TABLE source_insight
+    FIELDS embedding
+    HNSW
+    DIMENSION 1536
+    DIST COSINE;
+
+REMOVE INDEX IF EXISTS idx_note_embedding ON TABLE note;
+DEFINE INDEX idx_note_embedding ON TABLE note
+    FIELDS embedding
+    HNSW
+    DIMENSION 1536
+    DIST COSINE;
